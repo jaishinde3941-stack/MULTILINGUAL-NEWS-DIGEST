@@ -1,0 +1,158 @@
+[
+  {
+    "name": "Telugu One India",
+    "url": "https://telugu.oneindia.com/rss/feeds/oneindia-telugu-fb.xml",
+    "language": "Telugu",
+    "region": "Telangana/Andhra Pradesh"
+  },
+  {
+    "name": "Divya Marathi",
+    "url": "https://divyamarathi.bhaskar.com/rss-v1--category-5489.xml",
+    "language": "Marathi",
+    "region": "Maharashtra"
+  },
+  {
+    "name": "Divya Marathi",
+    "url": "https://divyamarathi.bhaskar.com/rss-v1--category-12021.xml",
+    "language": "Marathi",
+    "region": "Maharashtra"
+  },
+  {
+    "name": "Divya Marathi",
+    "url": "https://divyamarathi.bhaskar.com/rss-v1--category-5492.xml",
+    "language": "Marathi",
+    "region": "Maharashtra"
+  },
+  {
+    "name": "Divya Marathi",
+    "url": "https://divyamarathi.bhaskar.com/rss-v1--category-12019.xml",
+    "language": "Marathi",
+    "region": "Maharashtra"
+  },
+  {
+    "name": "Sandesh",
+    "url": "https://sandesh.com/rss/politics.xml",
+    "language": "Gujarati",
+    "region": "Gujarat"
+  },
+  {
+    "name": "Sandesh",
+    "url": "https://sandesh.com/rss/gujarat.xml",
+    "language": "Gujarati",
+    "region": "Gujarat"
+  },
+  {
+    "name": "Sandesh",
+    "url": "https://sandesh.com/rss/fashion-beauty.xml",
+    "language": "Gujarati",
+    "region": "Gujarat"
+  },
+  {
+    "name": "Sandesh",
+    "url": "https://sandesh.com/rss/crime.xml",
+    "language": "Gujarati",
+    "region": "Gujarat"
+  },
+  {
+    "name": "ABP Live",
+    "url": "https://www.abplive.com/home/feed",
+    "language": "Hindi",
+    "region": "India"
+  },
+  {
+    "name": "ABP Live",
+    "url": "https://www.abplive.com/entertainment/bollywood/feed",
+    "language": "Hindi",
+    "region": "India"
+  },
+  {
+    "name": "ABP Live",
+    "url": "https://www.abplive.com/states/feed",
+    "language": "Hindi",
+    "region": "India"
+  },
+  {
+    "name": "ABP Live",
+    "url": "https://www.abplive.com/agriculture/feed",
+    "language": "Hindi",
+    "region": "India"
+  },
+  {
+    "name": "ABP Live",
+    "url": "https://www.abplive.com/education/feed",
+    "language": "Hindi",
+    "region": "India"
+  },
+  {
+    "name": "ABP Live",
+    "url": "https://www.abplive.com/education/jobs/feed",
+    "language": "Hindi",
+    "region": "India"
+  },
+  {
+    "name": "Vikatan",
+    "url": "https://www.vikatan.com/api/v1/collections/kollywood-entertainment.rss?&time-period=last-24-hours",
+    "language": "Tamil",
+    "region": "Tamil Nadu"
+  },
+  {
+    "name": "Vikatan",
+    "url": "https://www.vikatan.com/stories.rss?section-id=8958&time-period=last-24-hours",
+    "language": "Tamil",
+    "region": "Tamil Nadu"
+  },
+  {
+    "name": "Vikatan",
+    "url": "https://www.vikatan.com/stories.rss?section-id=8963&time-period=last-24-hours",
+    "language": "Tamil",
+    "region": "Tamil Nadu"
+  },
+  {
+    "name": "Vikatan",
+    "url": "https://www.vikatan.com/stories.rss?section-id=8962&time-period=last-24-hours",
+    "language": "Tamil",
+    "region": "Tamil Nadu"
+  },
+  {
+    "name": "Vikatan",
+    "url": "https://www.vikatan.com/stories.rss?section-id=8971&time-period=last-24-hours",
+    "language": "Tamil",
+    "region": "Tamil Nadu"
+  },
+  {
+    "name": "Malayalam One India",
+    "url": "https://malayalam.oneindia.com/rss/feeds/malayalam-thiruvananthapuram-fb.xml",
+    "language": "Malayalam",
+    "region": "Kerala"
+  },
+  {
+    "name": "Malayalam One India",
+    "url": "https://malayalam.oneindia.com/rss/feeds/oneindia-malayalam-fb.xml",
+    "language": "Malayalam",
+    "region": "Kerala"
+  },
+  {
+    "name": "Malayalam One India",
+    "url": "https://malayalam.oneindia.com/rss/feeds/malayalam-cinema-fb.xml",
+    "language": "Malayalam",
+    "region": "Kerala"
+  },
+  {
+    "name": "Malayalam One India",
+    "url": "https://malayalam.oneindia.com/rss/feeds/malayalam-football-fb.xml",
+    "language": "Malayalam",
+    "region": "Kerala"
+  },
+  {
+    "name": "Malayalam One India",
+    "url": "https://malayalam.oneindia.com/rss/feeds/malayalam-technology-fb.xml",
+    "language": "Malayalam",
+    "region": "Kerala"
+  },
+  {
+    "name": "Malayalam One India",
+    "url": "https://malayalam.oneindia.com/rss/feeds/malayalam-today-offer-fb.xml",
+    "language": "Malayalam",
+    "region": "Kerala"
+  }
+]
