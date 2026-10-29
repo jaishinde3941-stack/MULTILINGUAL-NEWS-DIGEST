@@ -73,6 +73,35 @@ multilingual_news_digest/
 
 ## 🛠️ Quickstart Guide
 
+### ⚡ One-Click Startup (Recommended)
+
+To launch all 3 components (Ollama AI, FastAPI Backend, and Next.js Frontend) automatically with a single action:
+
+#### Option A: One-Click Windows Launcher
+Double-click **`start.bat`** in File Explorer (or run `start.bat` from Command Prompt).
+- Automatically verifies Node.js, Python, and Ollama.
+- Automatically creates virtual environments and installs dependencies if missing.
+- Reuses already running instances of Ollama, Backend, or Frontend without duplicating processes.
+- Verifies if the configured AI model (`llama3.2`) is installed.
+- Automatically launches your default browser to `http://localhost:3000`.
+
+#### Option B: PowerShell Single-Terminal Runner
+Run in PowerShell:
+```powershell
+# Standard mode (launches services in dedicated console windows)
+.\start.ps1
+
+# Single-Terminal mode (manages all 3 background services inside one terminal session)
+.\start.ps1 -SingleTerminal
+```
+
+#### Stopping Services:
+Double-click **`stop.bat`** or run `.\stop.ps1` in PowerShell to immediately free ports 8000 and 3000.
+
+---
+
+### Manual Setup Step-by-Step
+
 ### 1. Prerequisites
 - **Python 3.10+** (Tested on Python 3.14)
 - **Node.js 18+** & **npm**
