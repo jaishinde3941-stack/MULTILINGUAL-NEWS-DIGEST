@@ -68,7 +68,7 @@ def trigger_ingest(
     run_async: bool = Query(True)
 ):
     """
-    Trigger the scraper & NVIDIA Nemotron LLM translation pipeline.
+    Trigger the scraper & local Ollama LLM translation pipeline.
     Runs asynchronously in background by default, or synchronously if run_async=False.
     """
     if run_async:

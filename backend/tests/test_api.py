@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base, get_db
 from app import models
 from app.main import app
+from app.config import settings
 from app.services.llm_pipeline import llm_pipeline
 from app.services.quiz_data import ONBOARDING_QUESTIONS, calculate_interest_graph
 from app.services.seed_data import seed_database
@@ -50,7 +51,9 @@ def test_health_check(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["llm_provider"] == "NVIDIA Nemotron"
+    assert data["llm_provider"] == "Ollama"
+    assert data["llm_model"] == settings.OLLAMA_MODEL
+    assert "ollama_connected" in data
 
 def test_onboarding_questions_count(client):
     response = client.get("/api/onboarding/questions")
@@ -59,8 +62,18 @@ def test_onboarding_questions_count(client):
     assert data["total_questions"] == 15
     assert len(data["questions"]) == 15
 
+def test_ollama_status_check():
+    """Verify Ollama status checker returns a valid status dictionary."""
+    status = llm_pipeline.check_ollama_status()
+    assert isinstance(status, dict)
+    assert "available" in status
+    assert isinstance(status["available"], bool)
+    if not status["available"]:
+        assert "error" in status
+        assert "message" in status
+
 def test_llm_pipeline_attributes_validation():
-    """Verify LLM pipeline strictly produces all 6 core attributes plus English content."""
+    """Verify LLM pipeline strictly produces all 6 core attributes plus English content (with offline fallback)."""
     mock_title = "AI Traffic Cameras Mistake Fine Controversy in State"
     mock_content = "Traffic authorities reported that newly installed artificial intelligence traffic cameras experienced technical calibration disputes."
     

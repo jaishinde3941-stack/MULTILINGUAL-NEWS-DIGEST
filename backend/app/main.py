@@ -6,6 +6,7 @@ import logging
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.seed_data import seed_database
+from app.services.llm_pipeline import llm_pipeline
 from app.routers import auth_router, users_router, articles_router, ingest_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Multilingual News Digest API",
-    description="Backend API for international multilingual news aggregation, LLM translation (NVIDIA Nemotron), and personalized feeds.",
+    description="Backend API for international multilingual news aggregation, local LLM translation (Ollama), and personalized feeds.",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -58,11 +59,15 @@ app.include_router(ingest_router)
 
 @app.get("/")
 def health_check():
+    ollama_status = llm_pipeline.check_ollama_status()
     return {
         "status": "healthy",
         "service": "Multilingual News Digest API",
         "version": "1.0.0",
-        "llm_provider": "NVIDIA Nemotron",
+        "llm_provider": "Ollama",
+        "llm_model": settings.OLLAMA_MODEL,
+        "ollama_connected": ollama_status["available"],
+        "ollama_info": ollama_status.get("message", "Connected and model ready"),
         "database": "Ready"
     }
 

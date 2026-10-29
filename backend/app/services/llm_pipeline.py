@@ -3,9 +3,9 @@ import logging
 import re
 import urllib.parse
 import html
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Generator
 from bs4 import BeautifulSoup
-from openai import OpenAI
+import requests
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -78,23 +78,57 @@ def extract_english_title_from_slug(url: str, source_name: str, field: str) -> O
 
 class LLMPipeline:
     def __init__(self):
-        self.api_key = settings.NVIDIA_API_KEY
-        self.base_url = settings.NVIDIA_BASE_URL
-        self.model = settings.NVIDIA_MODEL
-        self._client: Optional[OpenAI] = None
-        self._api_working: Optional[bool] = None
+        self.base_url = settings.OLLAMA_BASE_URL.rstrip('/')
+        self.model = settings.OLLAMA_MODEL
+        self.timeout = 90.0
 
-    @property
-    def client(self) -> Optional[OpenAI]:
-        if not self.api_key:
-            return None
-        if self._client is None:
-            self._client = OpenAI(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                timeout=5.0
+    def check_ollama_status(self) -> Dict[str, Any]:
+        """
+        Check connectivity to the local Ollama server and verify if the configured model is installed.
+        """
+        try:
+            res = requests.get(f"{self.base_url}/api/tags", timeout=2.0)
+            if res.status_code != 200:
+                return {
+                    "available": False,
+                    "error": "http_error",
+                    "message": f"Ollama server returned HTTP {res.status_code} at {self.base_url}."
+                }
+            
+            data = res.json()
+            models = [m.get("name", "") for m in data.get("models", [])]
+            
+            # Check for exact name match or prefix match (e.g. 'llama3.2' matches 'llama3.2:latest' or 'llama3.2:3b')
+            model_match = any(
+                m == self.model or m.startswith(f"{self.model}:") 
+                for m in models
             )
-        return self._client
+            
+            if not model_match:
+                return {
+                    "available": False,
+                    "error": "model_not_found",
+                    "message": f"Ollama model '{self.model}' is not installed at {self.base_url}. Please run 'ollama pull {self.model}'.",
+                    "available_models": models
+                }
+            
+            return {
+                "available": True,
+                "model": self.model,
+                "available_models": models
+            }
+        except requests.exceptions.ConnectionError:
+            return {
+                "available": False,
+                "error": "connection_refused",
+                "message": f"Ollama server is not running or unreachable at {self.base_url}. Please start Ollama via 'ollama serve' or start the Ollama application."
+            }
+        except Exception as e:
+            return {
+                "available": False,
+                "error": "unknown_error",
+                "message": f"Unable to reach Ollama server at {self.base_url}: {str(e)}"
+            }
 
     def process_article(
         self,
@@ -107,45 +141,69 @@ class LLMPipeline:
     ) -> Dict[str, Any]:
         """
         Process an ingested raw foreign article:
-        Uses NVIDIA LLM if available and active, or the smart heuristic processor.
+        Uses local Ollama LLM if available and active, or the smart heuristic processor.
         """
         title_clean = clean_text(title)
         content_clean = clean_text(content)
 
-        if self.client and self._api_working is not False:
-            try:
-                result = self._call_nemotron(title_clean, content_clean, source_name)
-                self._api_working = True
-                return result
-            except Exception as e:
-                logger.info(f"NVIDIA API unavailable ({e}). Fast fallback to heuristic processor.")
-                self._api_working = False
-                return self._heuristic_fallback(
-                    title_clean, content_clean, source_name, source_url, expected_language, expected_region
-                )
-        else:
+        try:
+            result = self._call_ollama(title_clean, content_clean, source_name)
+            return result
+        except Exception as e:
+            logger.info(f"Ollama inference notice ({e}). Seamless fallback to heuristic processor.")
             return self._heuristic_fallback(
                 title_clean, content_clean, source_name, source_url, expected_language, expected_region
             )
 
-    def _call_nemotron(self, title: str, content: str, source_name: str) -> Dict[str, Any]:
+    def _call_ollama(self, title: str, content: str, source_name: str) -> Dict[str, Any]:
         prompt = USER_PROMPT_TEMPLATE.format(
             source_name=source_name,
             title=title,
-            content=content[:4000]
+            content=content[:3500]
         )
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
+        payload = {
+            "model": self.model,
+            "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.2,
-            max_tokens=1500
-        )
+            "format": "json",
+            "stream": False,
+            "options": {
+                "temperature": 0.2
+            }
+        }
 
-        raw_text = response.choices[0].message.content.strip()
+        try:
+            res = requests.post(
+                f"{self.base_url}/api/chat",
+                json=payload,
+                timeout=self.timeout
+            )
+        except requests.exceptions.ConnectionError as ce:
+            raise RuntimeError(
+                f"Ollama server is not running at {self.base_url}. "
+                "Start Ollama with 'ollama serve' or open the Ollama desktop app."
+            ) from ce
+        except requests.exceptions.Timeout as te:
+            raise RuntimeError(
+                f"Ollama inference timed out after {self.timeout}s on model '{self.model}'."
+            ) from te
+
+        if res.status_code == 404:
+            raise RuntimeError(
+                f"Model '{self.model}' was not found on Ollama server at {self.base_url}. "
+                f"Please run 'ollama pull {self.model}' to download it."
+            )
+        elif res.status_code != 200:
+            raise RuntimeError(
+                f"Ollama API returned HTTP {res.status_code}: {res.text}"
+            )
+
+        resp_data = res.json()
+        raw_text = resp_data.get("message", {}).get("content", "").strip()
+
         if raw_text.startswith("```json"):
             raw_text = raw_text[7:]
         if raw_text.startswith("```"):
@@ -156,6 +214,35 @@ class LLMPipeline:
 
         data = json.loads(raw_text)
         return self._validate_and_sanitize(data, title, content)
+
+    def stream_ollama(self, prompt: str, system_prompt: str = SYSTEM_PROMPT) -> Generator[str, None, None]:
+        """
+        Streaming response generator via local Ollama API.
+        """
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            "stream": True,
+            "options": {
+                "temperature": 0.2
+            }
+        }
+        res = requests.post(
+            f"{self.base_url}/api/chat",
+            json=payload,
+            stream=True,
+            timeout=self.timeout
+        )
+        res.raise_for_status()
+        for line in res.iter_lines():
+            if line:
+                chunk = json.loads(line.decode("utf-8"))
+                content = chunk.get("message", {}).get("content", "")
+                if content:
+                    yield content
 
     def _validate_and_sanitize(self, data: Dict[str, Any], original_title: str, original_content: str) -> Dict[str, Any]:
         """Ensure all required fields exist and conform to types."""
@@ -255,7 +342,7 @@ class LLMPipeline:
             region = "Europe"
             subregion = "Central Europe"
 
-        # 2. Derive English Headline FIRST (to empower accurate classification and keyword extraction)
+        # 2. Derive English Headline FIRST
         if language == "English":
             english_title = title
         else:
@@ -281,7 +368,6 @@ class LLMPipeline:
 
         # 6. English Executive Summary
         if language == "English":
-            # For English articles, use the first few sentences as the summary
             clean_sentences = [s.strip() for s in content.split(".") if len(s.strip()) > 15]
             if len(clean_sentences) >= 4:
                 english_summary = ". ".join(clean_sentences[:4]) + "."
@@ -324,4 +410,3 @@ class LLMPipeline:
         }
 
 llm_pipeline = LLMPipeline()
-

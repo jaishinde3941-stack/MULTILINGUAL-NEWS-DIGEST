@@ -7,7 +7,11 @@ import json
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./news_digest.db"
     
-    # NVIDIA Nemotron LLM Configuration
+    # Local Ollama LLM Configuration
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.2"
+
+    # Optional legacy fallback settings (no longer required)
     NVIDIA_API_KEY: str = ""
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
     NVIDIA_MODEL: str = "nvidia/llama-3.1-nemotron-70b-instruct"
