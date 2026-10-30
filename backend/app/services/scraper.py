@@ -1,11 +1,23 @@
 import feedparser
 import requests
 from bs4 import BeautifulSoup
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Check for newspaper3k and compatible lxml cleaner availability
+try:
+    import newspaper
+    from newspaper import Article as NewspaperArticle, Config as NewspaperConfig
+    HAS_NEWSPAPER = True
+except (ImportError, ModuleNotFoundError) as err:
+    HAS_NEWSPAPER = False
+    logger.warning(
+        f"newspaper3k is not available in the active Python environment ({err}). "
+        "RSS feed description text will be used as fallback content."
+    )
 
 CURATED_RSS_FEEDS = [
     {
@@ -125,19 +137,19 @@ class NewsScraper:
                 extracted_content = ""
                 extracted_image = ""
                 extracted_authors = []
-                try:
-                    import newspaper
-                    config = newspaper.Config()
-                    config.browser_user_agent = self.headers.get("User-Agent", "Mozilla/5.0")
-                    config.request_timeout = 7
-                    article = newspaper.Article(link, config=config)
-                    article.download()
-                    article.parse()
-                    extracted_content = article.text
-                    extracted_image = article.top_image
-                    extracted_authors = article.authors
-                except Exception as ex:
-                    logger.warning(f"newspaper3k failed for {link}: {ex}")
+                if HAS_NEWSPAPER:
+                    try:
+                        config = NewspaperConfig()
+                        config.browser_user_agent = self.headers.get("User-Agent", "Mozilla/5.0")
+                        config.request_timeout = 7
+                        article = NewspaperArticle(link, config=config)
+                        article.download()
+                        article.parse()
+                        extracted_content = article.text or ""
+                        extracted_image = article.top_image or ""
+                        extracted_authors = article.authors or []
+                    except Exception as ex:
+                        logger.warning(f"newspaper3k failed for {link}: {ex}")
 
                 # Choose best content and image
                 final_content = extracted_content if extracted_content and len(extracted_content) > 100 else fallback_content

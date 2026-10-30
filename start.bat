@@ -44,8 +44,16 @@ if %errorlevel% neq 0 (
 
 :: Python / Virtualenv
 set "PYTHON_EXE="
+set "PIP_EXE="
 if exist "%PROJECT_DIR%\backend\venv\Scripts\python.exe" (
     set "PYTHON_EXE=%PROJECT_DIR%\backend\venv\Scripts\python.exe"
+    set "PIP_EXE=%PROJECT_DIR%\backend\venv\Scripts\pip.exe"
+    :: Ensure newspaper and required dependencies are installed in existing venv
+    "%PROJECT_DIR%\backend\venv\Scripts\python.exe" -c "import newspaper" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [*] Installing missing backend dependencies in venv...
+        "%PROJECT_DIR%\backend\venv\Scripts\pip.exe" install -r "%PROJECT_DIR%\backend\requirements.txt"
+    )
 ) else (
     where python >nul 2>&1
     if %errorlevel% equ 0 (

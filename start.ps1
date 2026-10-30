@@ -45,6 +45,7 @@ if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
 
 # Python & Virtualenv
 $VenvPython = "$ProjectDir\backend\venv\Scripts\python.exe"
+$VenvPip = "$ProjectDir\backend\venv\Scripts\pip.exe"
 if (-not (Test-Path $VenvPython)) {
     Write-Host "[..] Backend virtual environment not found. Setting up venv..." -ForegroundColor Gray
     $SysPython = (Get-Command python -ErrorAction SilentlyContinue)?.Source
@@ -57,6 +58,12 @@ if (-not (Test-Path $VenvPython)) {
     }
     & $SysPython -m venv "$ProjectDir\backend\venv"
     & "$ProjectDir\backend\venv\Scripts\pip.exe" install -r "$ProjectDir\backend\requirements.txt"
+} else {
+    $hasNewspaper = & $VenvPython -c "import newspaper; print('OK')" 2>$null
+    if ($hasNewspaper -ne "OK") {
+        Write-Host "[..] Installing required dependencies in existing venv..." -ForegroundColor Gray
+        & $VenvPip install -r "$ProjectDir\backend\requirements.txt"
+    }
 }
 
 # Frontend dependencies
@@ -143,7 +150,7 @@ try {
             & ".\venv\Scripts\python.exe" -m uvicorn app.main:app --port 8000
         } -ArgumentList "$ProjectDir\backend"
     } else {
-        Start-Process cmd.exe -ArgumentList "/k cd /d `"$ProjectDir\backend`" && .\venv\Scripts\activate.bat && python -m uvicorn app.main:app --reload --port 8000" -WindowStyle Normal
+        Start-Process cmd.exe -ArgumentList "/k cd /d `"$ProjectDir\backend`" && .\venv\Scripts\activate.bat && .\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000" -WindowStyle Normal
     }
 
     # Wait for readiness
