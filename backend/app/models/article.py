@@ -16,7 +16,7 @@ class Article(Base):
     original_content = Column(Text, nullable=False)
     original_summary = Column(Text, nullable=True) # Distilled summary in original source language
     
-    # LLM processed fields
+    # LLM processed fields (Strictly English headline and 80-120 word summary - no full translation)
     english_title = Column(Text, nullable=False)
     english_summary = Column(Text, nullable=False)
     english_content = Column(Text, nullable=False)
@@ -30,6 +30,11 @@ class Article(Base):
     # Scoring & trending
     trending = Column(Boolean, default=False, index=True)
     trending_score = Column(Float, default=0.5)
+    
+    # Quality & processing tracking
+    processing_status = Column(String(30), default="completed", index=True) # completed, pending, failed, flagged
+    processing_error = Column(Text, nullable=True)
+    summary_word_count = Column(Integer, default=0)
     
     image_url = Column(String(1000), nullable=True)
     published_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

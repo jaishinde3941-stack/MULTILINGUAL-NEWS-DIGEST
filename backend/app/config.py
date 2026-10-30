@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     # Local Ollama LLM Configuration
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
+    OLLAMA_NUM_CTX: int = 4096
+    OLLAMA_NUM_PREDICT: int = 400
+    OLLAMA_TEMPERATURE: float = 0.1
+    OLLAMA_TIMEOUT: float = 45.0
+    OLLAMA_CONCURRENCY_LIMIT: int = 1
 
     # Optional legacy fallback settings (no longer required)
     NVIDIA_API_KEY: str = ""

@@ -17,6 +17,9 @@ export interface Article {
   keywords: string[];
   trending: boolean;
   trending_score: number;
+  processing_status?: "completed" | "pending" | "failed" | "flagged";
+  processing_error?: string;
+  summary_word_count?: number;
   image_url?: string;
   published_at: string;
   created_at: string;
@@ -171,6 +174,24 @@ export async function fetchArticleById(id: number): Promise<Article> {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("Failed to fetch article");
+  return res.json();
+}
+
+export async function reprocessArticle(articleId: number): Promise<Article> {
+  const res = await fetch(`${API_BASE_URL}/api/articles/${articleId}/reprocess`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to reprocess article");
+  return res.json();
+}
+
+export async function reprocessFailedArticles(limit: number = 25, mode: string = "unprocessed"): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/ingest/reprocess?limit=${limit}&mode=${mode}&run_async=true`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to trigger background reprocessing");
   return res.json();
 }
 

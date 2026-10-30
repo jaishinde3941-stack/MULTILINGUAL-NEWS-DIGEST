@@ -12,7 +12,8 @@ import { ProfileDrawer } from "@/components/ProfileDrawer";
 import { 
   Article, FilterMetadata, AuthUser,
   fetchTrendingArticles, fetchForYouArticles, fetchFilteredArticles,
-  fetchFilterMetadata, fetchCurrentUser, toggleBookmark, removeStoredToken, triggerIngestion
+  fetchFilterMetadata, fetchCurrentUser, toggleBookmark, removeStoredToken, triggerIngestion,
+  reprocessFailedArticles
 } from "@/lib/api";
 import { Sparkles, Flame, SlidersHorizontal, RefreshCw, AlertCircle, BookOpen } from "lucide-react";
 
@@ -332,6 +333,32 @@ export default function Home() {
               </>
             )}
           </div>
+
+          {articles.some((a) => a.processing_status === "failed" || a.processing_status === "flagged") && (
+            <button
+              onClick={async () => {
+                setIsIngesting(true);
+                setIngestStatus("Reprocessing incomplete/flagged articles with Llama 3.2...");
+                try {
+                  await reprocessFailedArticles(25, "unprocessed");
+                  setTimeout(async () => {
+                    await loadArticles();
+                    setIngestStatus("Reprocessing in progress...");
+                    setTimeout(() => setIngestStatus(null), 3000);
+                  }, 2000);
+                } catch {
+                  await loadArticles();
+                } finally {
+                  setIsIngesting(false);
+                }
+              }}
+              disabled={isIngesting}
+              className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isIngesting ? "animate-spin" : ""}`} />
+              <span>Reprocess Incomplete</span>
+            </button>
+          )}
         </div>
 
         {/* Error Notification */}
@@ -478,6 +505,10 @@ export default function Home() {
       <ArticleReaderModal
         article={selectedArticle}
         onClose={() => setSelectedArticle(null)}
+        onArticleUpdated={(updated) => {
+          setSelectedArticle(updated);
+          setArticles((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+        }}
       />
 
       {/* 15-Question Onboarding Modal */}

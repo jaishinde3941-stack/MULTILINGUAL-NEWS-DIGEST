@@ -15,11 +15,14 @@ All AI processing runs 100% locally on your machine via **Ollama**, ensuring com
 ## 🚀 Key Features
 
 - **Local Ollama LLM Pipeline (`llama3.2`)**:
-  - Automatically translates foreign articles into fluent English.
-  - Generates executive bulleted briefings and contextual summaries.
-  - Extracts structured metadata: Source Language, Continental Region, Subregion, Field/Category, Keywords, and Trending scores.
+  - Automatically summarizes non-English dispatches into accurate, factual **English headlines** and **English summaries (~80–120 words)** without translating entire articles.
+  - Generates executive contextual summaries adhering to Ollama JSON schema grammar.
+  - Native JSON Schema enforcement ensures zero hallucination, strict typing, and non-empty outputs.
+  - Multi-script language detection (Devanagari Hindi vs. Marathi lexical markers, Dravidian Telugu & Tamil, Latin/English, Arabic, Japanese) with automated English purity checks (≥70% Latin character validation).
+  - Context-aware hierarchical chunking for long-form investigative journalism (>2,000 words).
+  - Concurrency control via thread semaphores to protect local GPU VRAM.
+  - Safe background reprocessing endpoint (`/api/ingest/reprocess`) and single-article re-summarization with bounded retries.
   - Configurable model (defaults to `llama3.2`, customizable via `OLLAMA_MODEL`).
-  - Native JSON schema mode enforces clean structured outputs without hallucinations.
   - Offline/Dev fallback mode ensures instant functionality even if Ollama is starting up or temporarily offline.
 
 - **15-Question Onboarding Interest Graph**:
@@ -201,25 +204,37 @@ Open `http://localhost:3000` in your browser.
 
 ## 🧪 Running Tests
 
-To run the automated backend test suite:
+To run the automated backend test suite, including API integration and the comprehensive multilingual summarization test suite:
 
 ```bash
 cd backend
-.\venv\Scripts\pytest -o pythonpath=. tests -v
+
+# Fast test suite (API, Auth, Recommendation Engine, Script Detection, Error Handling):
+.\venv\Scripts\pytest -o pythonpath=. tests -k "not test_multilingual_summary_live and not test_long_article and not test_concurrent" -v
+
+# Full multilingual test suite with live local Ollama Llama 3.2 inference (Hindi, Marathi, Telugu, Tamil, English):
+.\venv\Scripts\pytest -o pythonpath=. tests/test_multilingual_summary.py -v
 ```
 
 Output:
 ```
-tests/test_api.py::test_health_check PASSED
-tests/test_api.py::test_onboarding_questions_count PASSED
-tests/test_api.py::test_ollama_status_check PASSED
-tests/test_api.py::test_llm_pipeline_attributes_validation PASSED
-tests/test_api.py::test_tagging_quality PASSED
-tests/test_api.py::test_interest_graph_calculation PASSED
-tests/test_api.py::test_user_registration_and_login PASSED
-tests/test_api.py::test_percentage_matching_rules PASSED
-tests/test_api.py::test_filtering_endpoints PASSED
-====== 9 passed in 3.10s ======
+tests/test_multilingual_summary.py::TestLanguageDetectionAndValidation::test_detect_source_language_devanagari_marathi_vs_hindi PASSED
+tests/test_multilingual_summary.py::TestLanguageDetectionAndValidation::test_detect_source_language_dravidian_scripts PASSED
+tests/test_multilingual_summary.py::TestLanguageDetectionAndValidation::test_detect_source_language_english PASSED
+tests/test_multilingual_summary.py::TestLanguageDetectionAndValidation::test_is_predominantly_english_validation PASSED
+tests/test_multilingual_summary.py::TestLiveMultilingualSummarization::test_multilingual_summary_live[hindi] PASSED
+tests/test_multilingual_summary.py::TestLiveMultilingualSummarization::test_multilingual_summary_live[marathi] PASSED
+tests/test_multilingual_summary.py::TestLiveMultilingualSummarization::test_multilingual_summary_live[telugu] PASSED
+tests/test_multilingual_summary.py::TestLiveMultilingualSummarization::test_multilingual_summary_live[tamil] PASSED
+tests/test_multilingual_summary.py::TestLiveMultilingualSummarization::test_multilingual_summary_live[english] PASSED
+tests/test_multilingual_summary.py::TestLiveMultilingualSummarization::test_short_article_no_hallucination PASSED
+tests/test_multilingual_summary.py::TestLiveMultilingualSummarization::test_long_article_hierarchical_chunking PASSED
+tests/test_multilingual_summary.py::TestConcurrencyAndErrorHandling::test_concurrent_requests_preserve_article_association PASSED
+tests/test_multilingual_summary.py::TestConcurrencyAndErrorHandling::test_bounded_retries_on_network_failure PASSED
+tests/test_multilingual_summary.py::TestConcurrencyAndErrorHandling::test_reprocess_endpoint PASSED
+tests/test_multilingual_summary.py::TestConcurrencyAndErrorHandling::test_individual_article_reprocess_endpoint PASSED
+tests/test_multilingual_summary.py::TestConcurrencyAndErrorHandling::test_ingest_status_endpoint PASSED
+====== 16 passed in 64.24s ======
 ```
 
 ---

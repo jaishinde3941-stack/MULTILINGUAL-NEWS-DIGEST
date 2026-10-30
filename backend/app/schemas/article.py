@@ -21,6 +21,9 @@ class ArticleResponse(BaseModel):
     keywords: List[str] = []
     trending: bool = False
     trending_score: float = 0.5
+    processing_status: Optional[str] = "completed"
+    processing_error: Optional[str] = None
+    summary_word_count: Optional[int] = 0
     image_url: Optional[str] = None
     published_at: datetime
     created_at: datetime

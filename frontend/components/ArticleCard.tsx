@@ -3,7 +3,8 @@
 import React from "react";
 import { 
   Bookmark, ExternalLink, Sparkles, Flame, 
-  Clock, MapPin, Languages, ArrowUpRight 
+  Clock, MapPin, Languages, ArrowUpRight,
+  RefreshCw, AlertCircle, AlertTriangle, CheckCircle2
 } from "lucide-react";
 import { Article } from "@/lib/api";
 
@@ -81,6 +82,39 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     }
   };
 
+  const getStatusBadge = () => {
+    switch (article.processing_status) {
+      case "pending":
+        return (
+          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-medium flex items-center gap-1 animate-pulse">
+            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+            <span>Summarizing...</span>
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30 font-medium flex items-center gap-1">
+            <AlertCircle className="w-2.5 h-2.5" />
+            <span>Summary Failed</span>
+          </span>
+        );
+      case "flagged":
+        return (
+          <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-300 border border-yellow-500/30 font-medium flex items-center gap-1">
+            <AlertTriangle className="w-2.5 h-2.5" />
+            <span>Review Needed</span>
+          </span>
+        );
+      default:
+        return (
+          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium flex items-center gap-1">
+            <CheckCircle2 className="w-2.5 h-2.5 text-blue-400" />
+            <span>English Summary</span>
+          </span>
+        );
+    }
+  };
+
   const matchPercent = typeof article.match_score === "number" && article.match_score > 0
     ? Math.round(article.match_score * 100)
     : null;
@@ -132,7 +166,6 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
               <span>Trending</span>
             </span>
           )}
-          {/* Strictly only show match percent if logged in AND completed onboarding quiz */}
           {isAuthenticated && hasCompletedQuiz && matchPercent !== null && (
             <span
               id={`badge-match-${article.id}`}
@@ -149,7 +182,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
       {/* Content Area - Guaranteed English Display */}
       <div className="p-5 flex-1 flex flex-col justify-between">
         <div>
-          {/* Metadata tags */}
+          {/* Metadata tags & Processing Status */}
           <div className="flex items-center gap-2 flex-wrap text-[11px] mb-2.5">
             <button
               type="button"
@@ -175,9 +208,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
               <span>{article.region}</span>
               {article.subregion && <span className="text-slate-500">• {article.subregion}</span>}
             </button>
-            <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
-              English Edition
-            </span>
+            {getStatusBadge()}
           </div>
 
           {/* Guaranteed English Title */}
@@ -188,18 +219,21 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
             {article.english_title}
           </h2>
 
-          {/* AI Executive Summary Bullets (in English) */}
+          {/* AI Executive Summary (Strictly English 80-120 word factual summary) */}
           <div className="bg-slate-900/60 rounded-xl p-3.5 border border-slate-800/80 mb-4">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-blue-400 uppercase tracking-wider mb-2">
-              <Sparkles className="w-3 h-3 text-blue-400" />
-              <span>Executive Summary</span>
+            <div className="flex items-center justify-between text-[10px] font-semibold text-blue-400 uppercase tracking-wider mb-2">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-blue-400" />
+                <span>Executive Summary</span>
+              </span>
+              {article.summary_word_count && article.summary_word_count > 0 ? (
+                <span className="text-slate-500 font-normal lowercase tracking-normal">~{article.summary_word_count} words</span>
+              ) : null}
             </div>
-            <div className="text-xs text-slate-300 space-y-1.5 leading-relaxed">
-              {article.english_summary.split("\n").map((line, idx) => (
-                <p key={idx} className="line-clamp-2">
-                  {line}
-                </p>
-              ))}
+            <div className="text-xs text-slate-300 leading-relaxed space-y-2">
+              <p className="line-clamp-4">
+                {article.english_summary}
+              </p>
             </div>
           </div>
         </div>

@@ -24,8 +24,17 @@ async def lifespan(app: FastAPI):
             cols = [r[1] for r in res.fetchall()]
             if "original_summary" not in cols:
                 conn.execute(text("ALTER TABLE articles ADD COLUMN original_summary TEXT"))
-                conn.commit()
                 logger.info("Added original_summary column to articles table.")
+            if "processing_status" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN processing_status VARCHAR(30) DEFAULT 'completed'"))
+                logger.info("Added processing_status column to articles table.")
+            if "processing_error" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN processing_error TEXT"))
+                logger.info("Added processing_error column to articles table.")
+            if "summary_word_count" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN summary_word_count INTEGER DEFAULT 0"))
+                logger.info("Added summary_word_count column to articles table.")
+            conn.commit()
     except Exception as e:
         logger.warning(f"Column migration notice: {e}")
 

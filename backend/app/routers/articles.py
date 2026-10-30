@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.profile import Profile
 from app.schemas.article import ArticleResponse, ArticleListResponse, FilterMetaResponse
 from app.services.recommendation import recommendation_engine
+from app.services.llm_pipeline import llm_pipeline
 from app.auth.deps import get_optional_current_user, get_current_user
 
 router = APIRouter(prefix="/api/articles", tags=["Articles & Feeds"])
@@ -37,6 +38,9 @@ def format_article_response(article: Article, user_id: Optional[int] = None, mat
         keywords=article.keywords or [],
         trending=article.trending,
         trending_score=article.trending_score,
+        processing_status=getattr(article, "processing_status", "completed") or "completed",
+        processing_error=getattr(article, "processing_error", None),
+        summary_word_count=getattr(article, "summary_word_count", 0) or 0,
         image_url=article.image_url,
         published_at=article.published_at,
         created_at=article.created_at,
@@ -62,7 +66,6 @@ def get_trending_articles(
     articles = query.limit(limit).all()
     user_id = current_user.id if current_user else None
 
-    # Never show match_score in trending feed; match score is personal to onboarding quiz
     items = [format_article_response(a, user_id=user_id, match_score=None, db=db) for a in articles]
     return ArticleListResponse(total=len(items), items=items)
 
@@ -164,7 +167,6 @@ def filter_articles(
     total = query.count()
     articles = query.order_by(desc(Article.published_at)).offset(offset).limit(limit).all()
 
-    # CRITICAL: Only compute match_score if user is authenticated AND has completed the quiz
     profile = None
     has_completed_quiz = False
     user_id = None
@@ -190,7 +192,6 @@ def get_filter_metadata(db: Session = Depends(get_db)):
     languages = sorted(list(set(l[0].strip() for l in db.query(Article.original_language).distinct().all() if l[0] and l[0].strip())))
     fields = sorted(list(set(f[0].strip() for f in db.query(Article.field).distinct().all() if f[0] and f[0].strip())))
 
-    # Sensible fallback defaults if database has not yet ingested articles
     if not regions:
         regions = ["Gujarat", "India", "Kerala", "Maharashtra", "Tamil Nadu", "Telangana/Andhra Pradesh"]
     if not languages:
@@ -225,6 +226,45 @@ def get_article(
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
         
+    user_id = current_user.id if current_user else None
+    return format_article_response(article, user_id=user_id, db=db)
+
+@router.post("/{article_id}/reprocess", response_model=ArticleResponse)
+def reprocess_article_endpoint(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user)
+):
+    """On-demand single article re-summarization via Ollama Llama 3.2."""
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    result = llm_pipeline.process_article(
+        title=article.original_title,
+        content=article.original_content,
+        source_name=article.source_name,
+        source_url=article.source_url,
+        expected_language=article.original_language,
+        expected_region=article.region,
+        article_id=article.id
+    )
+
+    article.english_title = result["english_title"]
+    article.english_summary = result["english_summary"]
+    article.english_content = result["english_content"]
+    article.region = result.get("region", article.region)
+    article.field = result.get("field", article.field)
+    article.keywords = result.get("keywords", article.keywords)
+    article.trending = result.get("trending", article.trending)
+    article.trending_score = result.get("trending_score", article.trending_score)
+    article.processing_status = result.get("processing_status", "completed")
+    article.processing_error = result.get("processing_error")
+    article.summary_word_count = result.get("summary_word_count", len(result["english_summary"].split()))
+
+    db.commit()
+    db.refresh(article)
+
     user_id = current_user.id if current_user else None
     return format_article_response(article, user_id=user_id, db=db)
 
