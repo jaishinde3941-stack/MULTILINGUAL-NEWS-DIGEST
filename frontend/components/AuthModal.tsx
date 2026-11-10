@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { X, Lock, Mail, User as UserIcon, AlertCircle } from "lucide-react";
 import { loginUser, registerUser, setStoredToken, AuthUser } from "@/lib/api";
 
@@ -21,6 +21,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, handleClose]);
 
   if (!isOpen) return null;
 
@@ -49,7 +72,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           completed_onboarding: res.completed_onboarding,
         });
       }
-      onClose();
+      handleClose();
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -62,35 +85,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md transition-all">
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-[#0f172a] border border-slate-700/80 shadow-2xl p-6 sm:p-8">
-        <div className="flex items-center justify-between mb-6">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--modal-overlay)] backdrop-blur-xs transition-all animate-modal-backdrop"
+      onClick={handleClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div 
+        className="relative w-full max-w-md overflow-hidden rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-2xl p-6 sm:p-7 animate-modal-content"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+            <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] border border-[var(--accent-border)] flex items-center justify-center text-[var(--accent)]">
               <Lock className="w-4 h-4" />
             </div>
-            <h2 className="text-lg font-bold text-white">
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">
               {isRegister ? "Create Account" : "Welcome Back"}
             </h2>
           </div>
           <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            type="button"
+            onClick={handleClose}
+            aria-label="Close authentication modal"
+            className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg)] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab switch */}
-        <div className="flex p-1 mb-6 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold">
+        <div className="flex p-1 mb-5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-xs font-semibold">
           <button
             type="button"
             onClick={() => {
               setIsRegister(false);
               setError(null);
             }}
-            className={`flex-1 py-2 rounded-lg transition-all ${
-              !isRegister ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+            className={`flex-1 py-1.5 rounded-md transition-all cursor-pointer ${
+              !isRegister ? "bg-[var(--card)] text-[var(--text-primary)] shadow-xs" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`}
           >
             Sign In
@@ -101,8 +134,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               setIsRegister(true);
               setError(null);
             }}
-            className={`flex-1 py-2 rounded-lg transition-all ${
-              isRegister ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+            className={`flex-1 py-1.5 rounded-md transition-all cursor-pointer ${
+              isRegister ? "bg-[var(--card)] text-[var(--text-primary)] shadow-xs" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`}
           >
             Register
@@ -110,76 +143,66 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+          <div className="p-3 mb-4 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-[var(--accent)]" />
             <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3.5">
           {isRegister && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Full Name</label>
               <div className="relative">
-                <UserIcon className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <UserIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  id="auth-name"
                   type="text"
-                  required
+                  required={isRegister}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Diplomat or Reader Name"
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  placeholder="John Doe"
+                  className="w-full pl-9 pr-3 py-2 bg-[var(--bg)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Email Address</label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Mail className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
-                id="auth-email"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                className="w-full pl-9 pr-3 py-2 text-sm bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                placeholder="reader@example.com"
+                className="w-full pl-9 pr-3 py-2 bg-[var(--bg)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Password</label>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Password</label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Lock className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
-                id="auth-password"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full pl-9 pr-3 py-2 text-sm bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                placeholder="••••••••"
+                className="w-full pl-9 pr-3 py-2 bg-[var(--bg)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
           </div>
 
           <button
-            id="auth-submit-btn"
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 mt-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
+            className="w-full py-2.5 rounded-lg bg-[var(--text-primary)] text-[var(--bg)] text-xs font-bold transition-opacity hover:opacity-90 disabled:opacity-50 mt-2 cursor-pointer shadow-sm"
           >
-            {loading ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : isRegister ? (
-              "Complete Registration"
-            ) : (
-              "Sign In"
-            )}
+            {loading ? "Processing..." : isRegister ? "Create Account" : "Sign In"}
           </button>
         </form>
       </div>

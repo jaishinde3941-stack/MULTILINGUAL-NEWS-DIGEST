@@ -1,75 +1,187 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400&family=Noto+Sans+Devanagari:wght@600;700;800&display=swap');
 @import "tailwindcss";
 
-:root {
-  --background: #090d16;
-  --foreground: #f1f5f9;
-  --card: #0f172a;
-  --card-border: #1e293b;
-  --accent: #3b82f6;
-  --accent-glow: rgba(59, 130, 246, 0.25);
-  --emerald-glow: rgba(16, 185, 129, 0.2);
-  --purple-glow: rgba(168, 85, 247, 0.2);
+/* --------------------------------------------------------------------------
+   अख़बार वाले — Digital Newspaper Editorial Theme Tokens
+   -------------------------------------------------------------------------- */
+
+:root, [data-theme="light"] {
+  --background: #F7F7F5;
+  --surface: #FFFFFF;
+  --surface-secondary: #F1F1EF;
+  --text-primary: #191919;
+  --text-secondary: #707070;
+  --text-muted: #929292;
+  --border: #E6E6E3;
+  --accent: #D92D35;
+  --accent-hover: #B91C27;
+  --accent-soft: #FCEBEC;
+  --input-background: #FFFFFF;
+
+  /* Aliases for child components */
+  --bg: var(--background);
+  --bg-subtle: var(--surface-secondary);
+  --card: var(--surface);
+  --card-hover: #FAF9F6;
+  --card-inner: var(--surface-secondary);
+  --accent-subtle: var(--accent-soft);
+  --accent-border: rgba(217, 45, 53, 0.25);
+  --border-subtle: #EFEFEA;
+  --border-hover: #D4D4D0;
+  --tag-bg: var(--surface-secondary);
+  --tag-border: var(--border);
+  --tag-text: var(--text-secondary);
+  --header-bg: rgba(255, 255, 255, 0.96);
+  --modal-overlay: rgba(25, 25, 25, 0.6);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"], .dark {
+  --background: #111318;
+  --surface: #191C23;
+  --surface-secondary: #20242D;
+  --text-primary: #F5F5F5;
+  --text-secondary: #A1A1AA;
+  --text-muted: #777D89;
+  --border: #2C303A;
+  --accent: #F05252;
+  --accent-hover: #FF6969;
+  --accent-soft: #392326;
+  --input-background: #191C23;
+
+  /* Aliases for child components */
+  --bg: var(--background);
+  --bg-subtle: var(--surface-secondary);
+  --card: var(--surface);
+  --card-hover: #212630;
+  --card-inner: var(--surface-secondary);
+  --accent-subtle: var(--accent-soft);
+  --accent-border: rgba(240, 82, 82, 0.35);
+  --border-subtle: #242832;
+  --border-hover: #3D4350;
+  --tag-bg: var(--surface-secondary);
+  --tag-border: var(--border);
+  --tag-text: var(--text-secondary);
+  --header-bg: rgba(25, 28, 35, 0.96);
+  --modal-overlay: rgba(0, 0, 0, 0.75);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  font-family: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   background-color: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow-x: hidden;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(30, 58, 138, 0.15) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(88, 28, 135, 0.12) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(15, 23, 42, 0.9) 0px, transparent 50%);
-  background-attachment: fixed;
+  min-height: 100vh;
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Custom Glassmorphism */
-.glass-panel {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Smooth theme transition on common surfaces */
+header, nav, article, select, input, button {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 0.18s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.glass-panel-hover {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+/* Editorial Headline Serif Font */
+.font-editorial {
+  font-family: var(--font-newsreader), "Newsreader", "Georgia", "Cambria", "Times New Roman", Times, serif;
 }
 
-.glass-panel-hover:hover {
-  background: rgba(30, 41, 59, 0.85);
-  border-color: rgba(59, 130, 246, 0.4);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5), 0 0 20px -5px var(--accent-glow);
+/* Hindi Devanagari Brand Title typography */
+.font-brand {
+  font-family: var(--font-noto-devanagari), "Noto Sans Devanagari", "Kohinoor Devanagari", "Mangal", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
-/* Smooth custom scrollbars */
+/* Custom editorial floating-pill scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
-  background: #090d16;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 4px;
+  background-color: var(--border);
+  border-radius: 9999px;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background-color: var(--text-muted);
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
 }
 
-/* Pulse animation for live indicators */
-@keyframes soft-pulse {
-  0%, 100% {
+/* Editorial subtle animations with spring easing */
+@keyframes editorial-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
     opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.7;
-    transform: scale(1.05);
   }
 }
 
-.animate-soft-pulse {
-  animation: soft-pulse 3s infinite ease-in-out;
+@keyframes editorial-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes shimmer-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.animate-modal-backdrop {
+  animation: editorial-fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-modal-content {
+  animation: editorial-zoom-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-shimmer {
+  animation: shimmer-slide 1.5s infinite ease-in-out;
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

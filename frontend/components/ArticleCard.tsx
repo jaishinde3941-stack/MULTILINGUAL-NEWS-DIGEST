@@ -1,10 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState, memo } from "react";
 import { 
-  Bookmark, ExternalLink, Sparkles, Flame, 
+  Bookmark, ExternalLink, Flame, 
   Clock, MapPin, Languages, ArrowUpRight,
-  RefreshCw, AlertCircle, AlertTriangle, CheckCircle2
+  AlertCircle, AlertTriangle,
+  Tag
 } from "lucide-react";
 import { Article } from "@/lib/api";
 
@@ -13,135 +14,102 @@ interface ArticleCardProps {
   onSelect: (article: Article) => void;
   onToggleBookmark: (id: number) => void;
   isAuthenticated: boolean;
-  hasCompletedQuiz?: boolean;
   onFilterByRegion?: (region: string) => void;
   onFilterByLanguage?: (lang: string) => void;
   onFilterByField?: (field: string) => void;
   onFilterByKeyword?: (keyword: string) => void;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({
+/**
+ * Editorial neutral tag styling with subtle red accent for high-priority categories.
+ */
+export function getTagStyle(tag: string, field?: string): string {
+  const lowerTag = tag.toLowerCase();
+  const lowerField = (field || "").toLowerCase();
+
+  // Breaking / Critical / Emergency (Editorial Red Accent)
+  if (
+    lowerTag.includes("emergency") ||
+    lowerTag.includes("alert") ||
+    lowerTag.includes("crisis") ||
+    lowerTag.includes("breaking")
+  ) {
+    return "bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent-border)]";
+  }
+
+  // Consistent Neutral Badge Styling
+  return "bg-[var(--surface-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--text-muted)]";
+}
+
+const ArticleCardComponent: React.FC<ArticleCardProps> = ({
   article,
   onSelect,
   onToggleBookmark,
   isAuthenticated,
-  hasCompletedQuiz = false,
   onFilterByRegion,
   onFilterByLanguage,
   onFilterByField,
   onFilterByKeyword,
 }) => {
-  const getLanguageFlag = (lang: string) => {
-    switch (lang?.toLowerCase()) {
-      case "telugu":
-      case "marathi":
-      case "gujarati":
-      case "hindi":
-      case "tamil":
-      case "malayalam":
-        return "🇮🇳";
-      case "french":
-        return "🇫🇷";
-      case "spanish":
-        return "🇪🇸";
-      case "german":
-        return "🇩🇪";
-      case "japanese":
-        return "🇯🇵";
-      case "arabic":
-        return "🇸🇦";
-      case "english":
-        return "🇬🇧";
-      default:
-        return "🌐";
-    }
-  };
-
-  const getFieldColor = (field: string) => {
-    switch (field) {
-      case "Politics":
-        return "text-purple-400 bg-purple-500/10 border-purple-500/30 hover:bg-purple-500/20";
-      case "Technology & AI":
-        return "text-cyan-400 bg-cyan-500/10 border-cyan-500/30 hover:bg-cyan-500/20";
-      case "Education & Jobs":
-        return "text-sky-400 bg-sky-500/10 border-sky-500/30 hover:bg-sky-500/20";
-      case "Entertainment & Cinema":
-        return "text-amber-400 bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20";
-      case "Health & Wellness":
-        return "text-rose-400 bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/20";
-      case "Agriculture & Rural":
-        return "text-emerald-400 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20";
-      case "Finance & Economics":
-        return "text-teal-400 bg-teal-500/10 border-teal-500/30 hover:bg-teal-500/20";
-      case "Culture & Society":
-        return "text-pink-400 bg-pink-500/10 border-pink-500/30 hover:bg-pink-500/20";
-      case "States & Regional":
-        return "text-indigo-400 bg-indigo-500/10 border-indigo-500/30 hover:bg-indigo-500/20";
-      default:
-        return "text-slate-400 bg-slate-500/10 border-slate-500/30 hover:bg-slate-500/20";
-    }
-  };
+  const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   const getStatusBadge = () => {
     switch (article.processing_status) {
       case "pending":
         return (
-          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-medium flex items-center gap-1 animate-pulse">
-            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-            <span>Summarizing...</span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium">
+            Summarizing...
           </span>
         );
       case "failed":
         return (
-          <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30 font-medium flex items-center gap-1">
+          <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 font-medium flex items-center gap-1">
             <AlertCircle className="w-2.5 h-2.5" />
             <span>Summary Failed</span>
           </span>
         );
       case "flagged":
         return (
-          <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-300 border border-yellow-500/30 font-medium flex items-center gap-1">
+          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium flex items-center gap-1">
             <AlertTriangle className="w-2.5 h-2.5" />
             <span>Review Needed</span>
           </span>
         );
       default:
-        return (
-          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium flex items-center gap-1">
-            <CheckCircle2 className="w-2.5 h-2.5 text-blue-400" />
-            <span>English Summary</span>
-          </span>
-        );
+        return null;
     }
   };
 
-  const matchPercent = typeof article.match_score === "number" && article.match_score > 0
-    ? Math.round(article.match_score * 100)
-    : null;
-
   return (
-    <article className="group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-[#0f172a]/70 border border-slate-800/80 hover:border-slate-700 hover:bg-[#131d36]/80 transition-all duration-300 shadow-lg hover:shadow-2xl">
-      {/* Top Media / Thumbnail */}
-      <div className="relative h-48 w-full overflow-hidden bg-slate-900">
-        {article.image_url ? (
+    <article
+      onClick={() => onSelect(article)}
+      className="group relative flex flex-col justify-between rounded-xl bg-[var(--surface)] dark:bg-[var(--surface-secondary)] border border-[var(--border)] hover:border-[var(--border-hover)] hover:-translate-y-1 hover:shadow-md transition-[transform,box-shadow,border-color] duration-200 ease-out transform-gpu will-change-transform cursor-pointer overflow-hidden"
+    >
+      {/* 16:9 Image container without heavy decorative overlays */}
+      <div className="relative aspect-[16/9] w-full overflow-hidden bg-[var(--surface-secondary)] shrink-0 border-b border-[var(--border)]">
+        {article.image_url && !imgError ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={article.image_url}
             alt={article.english_title}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            onError={() => setImgError(true)}
+            onLoad={() => setImgLoaded(true)}
+            className={`w-full h-full object-cover transition-[transform,opacity] duration-300 ease-out ${
+              imgLoaded ? "opacity-100" : "opacity-0"
+            } group-hover:scale-[1.02] transform-gpu will-change-transform`}
             loading="lazy"
+            decoding="async"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-tr from-slate-900 via-indigo-950/40 to-slate-900 flex items-center justify-center">
-            <Languages className="w-10 h-10 text-slate-700" />
+          <div className="w-full h-full bg-[var(--surface-secondary)] flex items-center justify-center">
+            <Languages className="w-8 h-8 text-[var(--text-muted)] opacity-40" />
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a] via-transparent to-black/30" />
-
-        {/* Source & Translation Pill */}
-        <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
-          <span className="px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md border border-white/10 text-white font-bold text-xs shadow-sm">
+        {/* Source and Original Language Badges */}
+        <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap z-10">
+          <span className="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-[var(--surface)]/95 text-[var(--text-primary)] border border-[var(--border)] shadow-xs uppercase tracking-wider backdrop-blur-xs">
             {article.source_name}
           </span>
           <button
@@ -150,137 +118,118 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
               e.stopPropagation();
               onFilterByLanguage?.(article.original_language);
             }}
-            title={`Filter articles by language: ${article.original_language}`}
-            className="px-2 py-0.5 rounded-lg bg-blue-950/80 hover:bg-blue-900 backdrop-blur-md border border-blue-500/30 text-blue-300 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+            title={`Original Language: ${article.original_language}`}
+            className="px-2 py-0.5 rounded text-[11px] font-medium bg-[var(--surface)]/90 hover:bg-[var(--surface)] text-[var(--text-secondary)] border border-[var(--border)] transition-colors cursor-pointer backdrop-blur-xs"
           >
-            <span>{getLanguageFlag(article.original_language)}</span>
             <span>From {article.original_language}</span>
           </button>
         </div>
 
-        {/* Trending or Personalization Badge */}
-        <div className="absolute top-3 right-3 flex items-center gap-1">
-          {article.trending && (
-            <span className="px-2 py-0.5 rounded-lg bg-orange-600/90 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1 shadow-md shadow-orange-950/50">
-              <Flame className="w-3 h-3 text-amber-200 fill-amber-200" />
+        {/* Trending Indicator */}
+        {article.trending && (
+          <div className="absolute top-3 right-3 z-10">
+            <span className="px-2.5 py-0.5 rounded bg-[var(--accent)] text-white text-[10px] font-semibold flex items-center gap-1 uppercase tracking-wider shadow-xs">
+              <Flame className="w-3 h-3 text-white fill-white" />
               <span>Trending</span>
             </span>
-          )}
-          {isAuthenticated && hasCompletedQuiz && matchPercent !== null && (
-            <span
-              id={`badge-match-${article.id}`}
-              title={`Personalized recommendation: ${matchPercent}% affinity based on your 15-question interest graph`}
-              className="px-2.5 py-0.5 rounded-lg bg-indigo-600/90 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1 shadow-md shadow-indigo-950/50 animate-soft-pulse"
-            >
-              <Sparkles className="w-3 h-3 text-indigo-200" />
-              <span>{matchPercent}% Match</span>
-            </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Content Area - Guaranteed English Display */}
+      {/* Main Content Area */}
       <div className="p-5 flex-1 flex flex-col justify-between">
         <div>
-          {/* Metadata tags & Processing Status */}
-          <div className="flex items-center gap-2 flex-wrap text-[11px] mb-2.5">
+          {/* Metadata Row: Category & Region (12px, Inter weight 500) */}
+          <div className="flex items-center gap-2 flex-wrap text-[12px] font-medium mb-2.5">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onFilterByField?.(article.field);
               }}
-              title={`Filter by field: ${article.field}`}
-              className={`px-2 py-0.5 rounded-md border font-medium transition-colors cursor-pointer ${getFieldColor(article.field)}`}
+              className="text-[var(--accent)] uppercase tracking-wider hover:underline cursor-pointer"
             >
               {article.field}
             </button>
+            <span className="text-[var(--border-hover)]">•</span>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onFilterByRegion?.(article.region);
               }}
-              title={`Filter by region: ${article.region}`}
-              className="inline-flex items-center gap-1 text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 transition-colors cursor-pointer"
+              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1 cursor-pointer font-normal"
             >
-              <MapPin className="w-3 h-3 text-slate-500" />
+              <MapPin className="w-3 h-3 text-[var(--text-muted)]" />
               <span>{article.region}</span>
-              {article.subregion && <span className="text-slate-500">• {article.subregion}</span>}
+              {article.subregion && <span className="text-[var(--text-muted)]">({article.subregion})</span>}
             </button>
             {getStatusBadge()}
           </div>
 
-          {/* Guaranteed English Title */}
-          <h2
-            onClick={() => onSelect(article)}
-            className="text-base sm:text-lg font-bold text-white group-hover:text-blue-400 transition-colors cursor-pointer leading-snug mb-3 line-clamp-2"
-          >
+          {/* English Article Headline: 19-21px, weight 650-700, max 3 lines */}
+          <h2 className="text-[19px] sm:text-[20px] font-bold text-[var(--text-primary)] leading-[1.3] group-hover:text-[var(--accent)] transition-colors mb-2.5 line-clamp-3">
             {article.english_title}
           </h2>
 
-          {/* AI Executive Summary (Strictly English 80-120 word factual summary) */}
-          <div className="bg-slate-900/60 rounded-xl p-3.5 border border-slate-800/80 mb-4">
-            <div className="flex items-center justify-between text-[10px] font-semibold text-blue-400 uppercase tracking-wider mb-2">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3 h-3 text-blue-400" />
-                <span>Executive Summary</span>
-              </span>
-              {article.summary_word_count && article.summary_word_count > 0 ? (
-                <span className="text-slate-500 font-normal lowercase tracking-normal">~{article.summary_word_count} words</span>
-              ) : null}
-            </div>
-            <div className="text-xs text-slate-300 leading-relaxed space-y-2">
-              <p className="line-clamp-4">
-                {article.english_summary}
-              </p>
-            </div>
-          </div>
+          {/* English Executive Summary: 14-15px, line-height ~1.6, line-clamp-3 */}
+          <p className="text-[14px] sm:text-[14.5px] text-[var(--text-secondary)] leading-[1.6] line-clamp-3 mb-4 font-normal">
+            {article.english_summary}
+          </p>
         </div>
 
-        {/* Footer info & Actions */}
+        {/* Footer Area: Tags & Actions */}
         <div>
-          {/* Keywords / Tags */}
+          {/* Contextual Tags */}
           {article.keywords && article.keywords.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap mb-4">
-              {article.keywords.slice(0, 4).map((kw, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onFilterByKeyword?.(kw);
-                  }}
-                  title={`Filter articles matching tag: ${kw}`}
-                  className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800/90 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700/60 transition-colors cursor-pointer"
-                >
-                  #{kw}
-                </button>
-              ))}
+              {article.keywords
+                .filter((kw) => kw.toLowerCase() !== "states & regional" && kw.toLowerCase() !== "news")
+                .slice(0, 3)
+                .map((kw, i) => (
+                  <button
+                    key={`${kw}-${i}`}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFilterByKeyword?.(kw);
+                    }}
+                    title={`Filter by tag: ${kw}`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border transition-colors cursor-pointer ${getTagStyle(kw, article.field)}`}
+                  >
+                    <Tag className="w-2.5 h-2.5 mr-1 opacity-70 shrink-0" />
+                    <span>{kw}</span>
+                  </button>
+                ))}
             </div>
           )}
 
-          <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span className="flex items-center gap-1 text-[11px]">
-              <Clock className="w-3 h-3 text-slate-500" />
+          {/* Bottom Metabar */}
+          <div className="pt-3.5 border-t border-[var(--border)] flex items-center justify-between text-[12px] text-[var(--text-muted)]">
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3 text-[var(--text-muted)]" />
               {new Date(article.published_at).toLocaleDateString(undefined, {
                 month: "short",
                 day: "numeric",
               })}
             </span>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {isAuthenticated && (
                 <button
-                  onClick={() => onToggleBookmark(article.id)}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleBookmark(article.id);
+                  }}
                   title={article.is_bookmarked ? "Remove Bookmark" : "Save Bookmark"}
-                  className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                  className={`w-8 h-8 rounded-md border transition-colors cursor-pointer flex items-center justify-center ${
                     article.is_bookmarked
-                      ? "bg-blue-600/20 border-blue-500 text-blue-400"
-                      : "bg-slate-800/80 border-slate-700/60 text-slate-400 hover:text-white"
+                      ? "bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--accent)]"
+                      : "bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                   }`}
                 >
-                  <Bookmark className={`w-3.5 h-3.5 ${article.is_bookmarked ? "fill-blue-400" : ""}`} />
+                  <Bookmark className={`w-3.5 h-3.5 ${article.is_bookmarked ? "fill-current" : ""}`} />
                 </button>
               )}
 
@@ -288,18 +237,23 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
                 href={article.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="View original article link"
-                className="p-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+                title="Visit original article source"
+                className="w-8 h-8 rounded-md bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] transition-colors flex items-center justify-center"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
 
               <button
-                onClick={() => onSelect(article)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600 border border-blue-500/40 text-blue-300 hover:text-white font-semibold transition-all text-xs cursor-pointer"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(article);
+                }}
+                className="flex items-center gap-1 h-8 px-2.5 rounded-md bg-[var(--surface)] hover:bg-[var(--surface-secondary)] border border-[var(--border)] text-[var(--text-primary)] font-medium transition-colors text-[12px] cursor-pointer active:scale-98"
               >
                 <span>Read Full</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
+                <ArrowUpRight className="w-3 h-3 text-[var(--accent)]" />
               </button>
             </div>
           </div>
@@ -308,3 +262,16 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     </article>
   );
 };
+
+// Memoized ArticleCard prevents unnecessary re-renders
+export const ArticleCard = memo(ArticleCardComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.article.id === nextProps.article.id &&
+    prevProps.article.is_bookmarked === nextProps.article.is_bookmarked &&
+    prevProps.article.processing_status === nextProps.article.processing_status &&
+    prevProps.article.english_title === nextProps.article.english_title &&
+    prevProps.article.english_summary === nextProps.article.english_summary &&
+    prevProps.isAuthenticated === nextProps.isAuthenticated &&
+    prevProps.article.batch_id === nextProps.article.batch_id
+  );
+});

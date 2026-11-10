@@ -33,7 +33,7 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     # Create associated profile
     new_profile = Profile(
         user_id=new_user.id,
-        completed_onboarding=False,
+        completed_onboarding=True,
         interest_weights={},
         preferred_languages=[],
         preferred_regions=[],
@@ -52,7 +52,7 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         user_id=new_user.id,
         email=new_user.email,
         full_name=new_user.full_name,
-        completed_onboarding=False
+        completed_onboarding=True
     )
 
 @router.post("/login", response_model=Token)

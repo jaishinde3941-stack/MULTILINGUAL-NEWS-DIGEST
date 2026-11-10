@@ -24,6 +24,9 @@ class ArticleResponse(BaseModel):
     processing_status: Optional[str] = "completed"
     processing_error: Optional[str] = None
     summary_word_count: Optional[int] = 0
+    batch_id: Optional[str] = None
+    batch_state: Optional[str] = "active"
+    canonical_url: Optional[str] = None
     image_url: Optional[str] = None
     published_at: datetime
     created_at: datetime
@@ -44,3 +47,29 @@ class IngestResult(BaseModel):
     processed_count: int
     skipped_count: int
     errors: List[str] = []
+
+class BatchStatusResponse(BaseModel):
+    active_count: int
+    reserve_count: int
+    consumed_count: int
+    target_batch_size: int = 50
+    active_batch_id: Optional[str] = None
+    is_refilling: bool
+    refill_progress: Optional[dict] = None
+    can_rotate: bool
+    message: Optional[str] = None
+
+class BatchRotateResponse(BaseModel):
+    status: str
+    message: str
+    batch_id: Optional[str] = None
+    active_batch_id: Optional[str] = None
+    rotated_count: int = 0
+    count: int = 0
+    active_count: int = 0
+    reserve_count: int = 0
+    reserve_remaining: int = 0
+    ready_count: int = 0
+    items: List[ArticleResponse] = []
+    articles: List[ArticleResponse] = []
+    is_refilling: bool = False

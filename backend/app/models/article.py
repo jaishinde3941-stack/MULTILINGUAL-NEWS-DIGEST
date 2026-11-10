@@ -36,6 +36,14 @@ class Article(Base):
     processing_error = Column(Text, nullable=True)
     summary_word_count = Column(Integer, default=0)
     
+    # Batch rotation & deduplication management
+    canonical_url = Column(String(1000), index=True, nullable=True)
+    article_fingerprint = Column(String(64), index=True, nullable=True)
+    batch_id = Column(String(50), index=True, nullable=True)
+    batch_state = Column(String(20), default="active", index=True) # active, reserve, consumed
+    displayed_at = Column(DateTime, nullable=True, index=True)
+    consumed_at = Column(DateTime, nullable=True, index=True)
+    
     image_url = Column(String(1000), nullable=True)
     published_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

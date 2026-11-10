@@ -150,25 +150,41 @@ echo.
 :: ----------------------------------------------------------------------
 echo [3/4] Checking Backend API Server...
 
-curl.exe -s -m 2 http://127.0.0.1:8000/ >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [OK] Backend API is already running on http://127.0.0.1:8000 [reusing existing instance].
-    goto :FRONTEND_STEP
+set "BACKEND_PORT=8000"
+if exist "%PROJECT_DIR%\backend\.env" (
+    for /f "tokens=2 delims==" %%A in ('findstr /b "PORT=" "%PROJECT_DIR%\backend\.env"') do (
+        set "BACKEND_PORT=%%A"
+    )
 )
 
-echo [*] Starting FastAPI backend on http://127.0.0.1:8000...
-start "Multilingual News Digest - Backend API (Port 8000)" "%PROJECT_DIR%\backend\run_backend.bat"
+curl.exe -s -m 3 http://127.0.0.1:%BACKEND_PORT%/api/ingest/batch-status >nul 2>&1
+if %errorlevel% equ 0 goto :BACKEND_IS_RUNNING
+curl.exe -s -m 3 http://127.0.0.1:%BACKEND_PORT%/health >nul 2>&1
+if %errorlevel% equ 0 goto :BACKEND_IS_RUNNING
+curl.exe -s -m 3 http://127.0.0.1:%BACKEND_PORT%/ >nul 2>&1
+if %errorlevel% equ 0 goto :BACKEND_IS_RUNNING
+
+echo [*] Starting FastAPI backend on http://127.0.0.1:%BACKEND_PORT%...
+start "Multilingual News Digest - Backend API (Port %BACKEND_PORT%)" "%PROJECT_DIR%\backend\run_backend.bat"
 
 echo [*] Waiting for Backend API readiness...
 set "BACKEND_COUNT=0"
 :BACKEND_WAIT_LOOP
 ping -n 2 127.0.0.1 >nul
-curl.exe -s -m 1 http://127.0.0.1:8000/ >nul 2>&1
+curl.exe -s -m 2 http://127.0.0.1:%BACKEND_PORT%/api/ingest/batch-status >nul 2>&1
+if %errorlevel% equ 0 goto :BACKEND_READY
+curl.exe -s -m 2 http://127.0.0.1:%BACKEND_PORT%/health >nul 2>&1
+if %errorlevel% equ 0 goto :BACKEND_READY
+curl.exe -s -m 2 http://127.0.0.1:%BACKEND_PORT%/ >nul 2>&1
 if %errorlevel% equ 0 goto :BACKEND_READY
 
 set /a BACKEND_COUNT+=1
-if %BACKEND_COUNT% geq 12 goto :BACKEND_READY
+if %BACKEND_COUNT% geq 15 goto :BACKEND_READY
 goto :BACKEND_WAIT_LOOP
+
+:BACKEND_IS_RUNNING
+echo [OK] Backend API is already running on http://127.0.0.1:%BACKEND_PORT% [reusing existing instance].
+goto :FRONTEND_STEP
 
 :BACKEND_READY
 echo [OK] Backend API is active!
@@ -218,8 +234,8 @@ echo                ALL SYSTEM SERVICES ARE UP AND READY!
 echo ======================================================================
 echo.
 echo   * Frontend Web UI:    http://localhost:3000
-echo   * Backend REST API:   http://127.0.0.1:8000
-echo   * Interactive Docs:   http://127.0.0.1:8000/docs
+echo   * Backend REST API:   http://127.0.0.1:%BACKEND_PORT%
+echo   * Interactive Docs:   http://127.0.0.1:%BACKEND_PORT%/docs
 echo   * Ollama Service:     http://localhost:11434
 echo   * Configured Model:   %OLLAMA_MODEL%
 echo.

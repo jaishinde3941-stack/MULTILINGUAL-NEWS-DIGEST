@@ -27,8 +27,8 @@ if "%1"=="--install" (
     )
 )
 
-echo Starting FastAPI Backend server on http://127.0.0.1:8000 using %PYTHON_EXE% ...
-"%PYTHON_EXE%" -m uvicorn app.main:app --reload --port 8000
+echo Checking and starting FastAPI backend using %PYTHON_EXE% ...
+"%PYTHON_EXE%" run_server.py %*
 if %errorlevel% neq 0 (
     echo [ERROR] Backend failed to start.
     pause

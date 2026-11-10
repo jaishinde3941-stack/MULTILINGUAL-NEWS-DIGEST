@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { 
   X, ExternalLink, Volume2, VolumeX, Copy, Check, 
-  Sparkles, MapPin, Tag, Globe, Clock, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2 
+  MapPin, Clock, RefreshCw, AlertTriangle,
+  ChevronDown
 } from "lucide-react";
 import { Article, reprocessArticle } from "@/lib/api";
 
@@ -13,49 +14,166 @@ interface ArticleReaderModalProps {
   onArticleUpdated?: (updated: Article) => void;
 }
 
+/**
+ * Normalizes and selects 2-4 high-value, English-only editorial contextual tags.
+ * Deduplicates, filters generic filler, and formats as clean uppercase editorial tags.
+ */
+function getEditorialTags(article: Article): string[] {
+  const genericTerms = new Set([
+    "states & regional",
+    "state & regional",
+    "general news",
+    "general",
+    "news",
+    "article",
+    "update",
+    "latest",
+    "breaking",
+    "report",
+    "stories",
+    "daily",
+  ]);
+
+  const candidates: string[] = [];
+
+  // 1. Process existing article keywords
+  if (Array.isArray(article.keywords)) {
+    for (const kw of article.keywords) {
+      if (typeof kw !== "string") continue;
+      const trimmed = kw.trim();
+      const lower = trimmed.toLowerCase();
+      // Only English/ASCII characters allowed
+      if (!/^[a-zA-Z0-9\s\-&'.]+$/.test(trimmed)) continue;
+      // Skip generic boilerplate terms
+      if (genericTerms.has(lower)) continue;
+      // Skip strings that are overly long sentences or single characters
+      if (trimmed.length > 25 || trimmed.length < 2) continue;
+      // Deduplicate case-insensitively
+      if (!candidates.some((c) => c.toLowerCase() === lower)) {
+        candidates.push(trimmed.toUpperCase());
+      }
+    }
+  }
+
+  // 2. If fewer than 2 tags, supplement with meaningful editorial field
+  if (candidates.length < 2 && article.field) {
+    const fieldTag = article.field.trim().toUpperCase();
+    if (
+      !genericTerms.has(article.field.toLowerCase()) &&
+      !candidates.some((c) => c === fieldTag)
+    ) {
+      candidates.unshift(fieldTag);
+    }
+  }
+
+  // 3. If still fewer than 3 tags, infer topical editorial themes from English title
+  if (candidates.length < 3 && article.english_title) {
+    const titleUpper = article.english_title.toUpperCase();
+    const topicKeywords = [
+      { pattern: /\b(ELECTION|VOTE|POLL|CANDIDATE)\b/, tag: "ELECTION" },
+      { pattern: /\b(ECONOMY|MARKET|FINANCE|TRADE|BUDGET|BANK|STOCK|RUPEE)\b/, tag: "ECONOMY" },
+      { pattern: /\b(TECHNOLOGY|TECH|AI|DIGITAL|CYBER|SOFTWARE|SATELLITE|ISRO)\b/, tag: "TECHNOLOGY" },
+      { pattern: /\b(DIPLOMACY|FOREIGN|GLOBAL|BILATERAL|TREATY|BORDER)\b/, tag: "DIPLOMACY" },
+      { pattern: /\b(LEADERSHIP|MINISTER|GOVERNANCE|CABINET|POLICY|GOVERNMENT)\b/, tag: "LEADERSHIP" },
+      { pattern: /\b(RAILWAY|TRANSIT|METRO|TRANSPORT|INFRASTRUCTURE|TRAIN)\b/, tag: "INFRASTRUCTURE" },
+      { pattern: /\b(JUDICIARY|COURT|LEGAL|JUSTICE|VERDICT)\b/, tag: "JUDICIARY" },
+      { pattern: /\b(HEALTH|MEDICAL|HOSPITAL|DISEASE|FOOD)\b/, tag: "HEALTHCARE" },
+      { pattern: /\b(CLIMATE|ENVIRONMENT|WEATHER|MONSOON|RAIN)\b/, tag: "CLIMATE" },
+    ];
+
+    for (const item of topicKeywords) {
+      if (item.pattern.test(titleUpper) && !candidates.includes(item.tag)) {
+        candidates.push(item.tag);
+        if (candidates.length >= 4) break;
+      }
+    }
+  }
+
+  // 4. Return between 2 and 4 tags
+  return candidates.slice(0, 4);
+}
+
 export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
   article,
   onClose,
   onArticleUpdated,
 }) => {
-  const [currentArticle, setCurrentArticle] = useState<Article | null>(article);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [localArticle, setLocalArticle] = useState<Article | null>(article);
+  const [showOriginalHeadline, setShowOriginalHeadline] = useState<boolean>(false);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [copied, setCopied] = useState<boolean>(false);
+  const [isReprocessing, setIsReprocessing] = useState<boolean>(false);
   const [reprocessError, setReprocessError] = useState<string | null>(null);
 
+  // Sync internal state whenever the prop article changes or is cleared
   useEffect(() => {
-    setCurrentArticle(article);
+    setLocalArticle(article);
     setReprocessError(null);
+    setIsSpeaking(false);
+    setShowOriginalHeadline(false);
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
   }, [article]);
 
-  if (!currentArticle) return null;
-
-  const getLanguageFlag = (lang: string) => {
-    switch (lang?.toLowerCase()) {
-      case "telugu":
-      case "marathi":
-      case "gujarati":
-      case "hindi":
-      case "tamil":
-      case "malayalam":
-        return "🇮🇳";
-      case "french":
-        return "🇫🇷";
-      case "spanish":
-        return "🇪🇸";
-      case "german":
-        return "🇩🇪";
-      case "japanese":
-        return "🇯🇵";
-      case "arabic":
-        return "🇸🇦";
-      case "english":
-        return "🇬🇧";
-      default:
-        return "🌐";
+  const handleClose = useCallback(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
     }
-  };
+    setIsSpeaking(false);
+    onClose();
+  }, [onClose]);
+
+  // Handle Escape key & body scroll locking
+  useEffect(() => {
+    if (!article) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [article, handleClose]);
+
+  const formattedDate = useMemo(() => {
+    if (!localArticle?.published_at) return "";
+    try {
+      const d = new Date(localArticle.published_at);
+      return isNaN(d.getTime())
+        ? ""
+        : d.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+    } catch {
+      return "";
+    }
+  }, [localArticle?.published_at]);
+
+  const editorialTags = useMemo(() => {
+    if (!localArticle) return [];
+    return getEditorialTags(localArticle);
+  }, [localArticle]);
+
+  // If no article is active, render nothing (completely unmounted)
+  if (!article || !localArticle) return null;
+
+  const currentArticle = localArticle;
 
   const handleToggleSpeech = () => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -88,209 +206,268 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
     setReprocessError(null);
     try {
       const updated = await reprocessArticle(currentArticle.id);
-      setCurrentArticle(updated);
+      setLocalArticle(updated);
       onArticleUpdated?.(updated);
-    } catch (err: any) {
-      setReprocessError(err.message || "Failed to reprocess with Llama 3.2");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to reprocess with Llama 3.2";
+      setReprocessError(message);
     } finally {
       setIsReprocessing(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md transition-all">
-      <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl bg-[#0b1120] border border-slate-700/80 shadow-2xl overflow-hidden">
-        {/* Modal Top Bar */}
-        <div className="flex items-center justify-between p-4 sm:px-6 border-b border-slate-800 bg-slate-900/60">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="px-3 py-1 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-300 text-xs font-bold">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-[var(--modal-overlay)] backdrop-blur-md transition-all animate-modal-backdrop"
+      onClick={handleClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-article-title"
+    >
+      <div 
+        className="relative w-full max-w-[850px] max-h-[85vh] flex flex-col rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-2xl overflow-hidden animate-modal-content"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Compact Editorial Header */}
+        <div className="flex items-center justify-between px-5 sm:px-6 py-3 border-b border-[var(--border)] bg-[var(--surface)] shrink-0 gap-3 select-none">
+          {/* Metadata Byline: Publication name | Original language → English | Publication date */}
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap min-w-0">
+            <span className="text-[12px] font-bold uppercase tracking-wider text-[var(--text-primary)]">
               {currentArticle.source_name}
             </span>
-            <span className="text-xs text-slate-300 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700">
-              <span>{getLanguageFlag(currentArticle.original_language)}</span>
-              <span>{currentArticle.original_language} → 🇬🇧 English</span>
+            <span className="text-[var(--border)] text-xs select-none">|</span>
+            <span className="text-[12px] text-[var(--text-secondary)] font-normal inline-flex items-center gap-1.5">
+              <span>{currentArticle.original_language}</span>
+              <span className="text-[var(--text-muted)]">→</span>
+              <span>English</span>
             </span>
-            <span className="text-xs text-slate-400 hidden md:inline-flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              <span>{new Date(currentArticle.published_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
-            </span>
+            {formattedDate && (
+              <>
+                <span className="text-[var(--border)] text-xs select-none hidden sm:inline">|</span>
+                <span className="text-[12px] text-[var(--text-muted)] font-normal hidden sm:inline-flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{formattedDate}</span>
+                </span>
+              </>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Audio Reader */}
+          {/* Action Toolbar: Listen | Copy | Source | Close */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Listen Button */}
             <button
+              type="button"
               onClick={handleToggleSpeech}
               title={isSpeaking ? "Stop Voice Reader" : "Listen to English Summary"}
-              className={`p-2 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+              aria-label={isSpeaking ? "Stop Voice Reader" : "Listen to English Summary"}
+              className={`h-8 px-2.5 rounded-md border text-[12px] font-medium transition-colors inline-flex items-center gap-1.5 cursor-pointer ${
                 isSpeaking
-                  ? "bg-rose-600 text-white border-rose-500"
-                  : "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700"
+                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
+                  : "bg-[var(--surface)] hover:bg-[var(--surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border-[var(--border)]"
               }`}
             >
-              {isSpeaking ? <VolumeX className="w-4 h-4 animate-pulse" /> : <Volume2 className="w-4 h-4 text-blue-400" />}
+              {isSpeaking ? (
+                <VolumeX className="w-3.5 h-3.5 animate-pulse" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5 text-[var(--accent)]" />
+              )}
               <span className="hidden sm:inline">{isSpeaking ? "Stop" : "Listen"}</span>
             </button>
 
             {/* Copy Button */}
             <button
+              type="button"
               onClick={handleCopy}
-              title="Copy Summary & Translation"
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
+              title="Copy Summary to clipboard"
+              aria-label="Copy summary to clipboard"
+              className="h-8 px-2.5 rounded-md bg-[var(--surface)] hover:bg-[var(--surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="hidden sm:inline text-emerald-600 dark:text-emerald-400 font-medium">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Copy</span>
+                </>
+              )}
             </button>
 
-            {/* Source external link */}
+            {/* Open Original Article Button */}
             <a
               href={currentArticle.source_url}
               target="_blank"
               rel="noopener noreferrer"
-              title="Visit original article on source site"
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              title="Open original article on publisher's website"
+              aria-label="Open original article on publisher's website"
+              className="h-8 px-2.5 rounded-md bg-[var(--surface)] hover:bg-[var(--surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center gap-1.5"
             >
-              <ExternalLink className="w-4 h-4 text-slate-400" />
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Source</span>
             </a>
 
             {/* Close Button */}
             <button
-              onClick={() => {
-                if (isSpeaking && typeof window !== "undefined") window.speechSynthesis.cancel();
-                onClose();
-              }}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition-all cursor-pointer"
+              id="btn-close-reader-modal"
+              type="button"
+              onClick={handleClose}
+              title="Close article (Esc)"
+              aria-label="Close article"
+              className="w-8 h-8 rounded-md bg-[var(--surface)] hover:bg-[var(--surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center justify-center cursor-pointer active:scale-95"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Reader Content Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
-          {/* Article Header info */}
-          <div>
-            <div className="flex items-center gap-2 flex-wrap mb-3 text-xs">
-              <span className="px-2.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-400 font-medium">
-                {currentArticle.field}
-              </span>
-              <span className="flex items-center gap-1 text-slate-400">
-                <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                <span>{currentArticle.region}</span>
-                {currentArticle.subregion && <span>({currentArticle.subregion})</span>}
-              </span>
-              {currentArticle.processing_status === "failed" && (
-                <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30 font-medium flex items-center gap-1 text-[11px]">
-                  <AlertCircle className="w-3 h-3 text-rose-400" />
-                  <span>Processing Failed</span>
-                </span>
+        {/* Editorial Content Body */}
+        <div className="px-6 sm:px-8 py-5 sm:py-7 overflow-y-auto flex-1">
+          {/* Subtle Metadata Kicker: Editorial category & Region */}
+          <div className="flex items-center gap-2 flex-wrap text-[12px] tracking-wider uppercase mb-2">
+            <span className="text-[var(--accent)] font-semibold">
+              {currentArticle.field || "General News"}
+            </span>
+            <span className="text-[var(--border-hover)]">•</span>
+            <span className="flex items-center gap-1 text-[var(--text-secondary)] font-normal">
+              <MapPin className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+              <span>{currentArticle.region}</span>
+              {currentArticle.subregion && (
+                <span className="text-[var(--text-muted)]">({currentArticle.subregion})</span>
               )}
-              {currentArticle.processing_status === "flagged" && (
-                <span className="px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-300 border border-yellow-500/30 font-medium flex items-center gap-1 text-[11px]">
-                  <AlertTriangle className="w-3 h-3 text-yellow-400" />
-                  <span>Review Needed</span>
+            </span>
+          </div>
+
+          {/* Prominent English Headline in Newsreader: 36-40px desktop, weight 650 */}
+          <h1 
+            id="modal-article-title"
+            className="font-editorial text-2xl sm:text-3xl md:text-[36px] lg:text-[40px] font-semibold text-[var(--text-primary)] leading-[1.2] tracking-tight mb-2.5"
+          >
+            {currentArticle.english_title}
+          </h1>
+
+          {/* Original-language headline below it in smaller muted italic text */}
+          {currentArticle.original_title && (
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={() => setShowOriginalHeadline((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer select-none py-1 group focus:outline-none"
+                aria-expanded={showOriginalHeadline}
+              >
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform duration-200 ${
+                    showOriginalHeadline ? "rotate-180 text-[var(--accent)]" : "group-hover:translate-y-0.5"
+                  }`}
+                />
+                <span>
+                  {showOriginalHeadline
+                    ? `Hide Original Headline (${currentArticle.original_language})`
+                    : `View Original Headline (${currentArticle.original_language})`}
                 </span>
+              </button>
+
+              {showOriginalHeadline && (
+                <div className="mt-2 pl-3 py-1.5 border-l-2 border-[var(--accent-border)] text-[13px] sm:text-[14px] text-[var(--text-muted)] italic font-normal leading-relaxed animate-modal-backdrop">
+                  &ldquo;{currentArticle.original_title}&rdquo;
+                </div>
               )}
             </div>
-
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white leading-tight mb-2">
-              {currentArticle.english_title}
-            </h1>
-
-            <p className="text-xs sm:text-sm text-slate-400 italic">
-              Original {currentArticle.original_language} Headline: &quot;{currentArticle.original_title}&quot;
-            </p>
-          </div>
+          )}
 
           {/* Reprocessing status / Error warning if failed */}
           {(currentArticle.processing_status === "failed" || currentArticle.processing_status === "flagged" || reprocessError) && (
-            <div className="p-4 rounded-xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between gap-4">
+            <div className="p-3.5 rounded-lg bg-[var(--surface-secondary)] border border-[var(--border)] flex items-center justify-between gap-4 my-4">
               <div className="space-y-0.5">
-                <p className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <p className="text-xs font-semibold text-[var(--accent)] flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4" />
                   <span>AI Summarization Notice</span>
                 </p>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-[var(--text-muted)]">
                   {reprocessError || currentArticle.processing_error || "This article may benefit from re-summarization with Llama 3.2."}
                 </p>
               </div>
               <button
+                type="button"
                 onClick={handleReprocess}
                 disabled={isReprocessing}
-                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
+                className="px-3 py-1.5 rounded-md bg-[var(--surface)] hover:bg-[var(--surface-secondary)] text-[var(--text-primary)] border border-[var(--border)] font-medium text-xs flex items-center gap-1.5 transition-colors shrink-0 disabled:opacity-50 cursor-pointer shadow-xs"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isReprocessing ? "animate-spin" : ""}`} />
-                <span>{isReprocessing ? "Processing..." : "Re-summarize with Llama 3.2"}</span>
+                <span>{isReprocessing ? "Processing..." : "Re-summarize"}</span>
               </button>
             </div>
           )}
 
-          {/* Single English Summary Section */}
-          <div className="p-5 rounded-xl bg-gradient-to-br from-blue-950/40 via-slate-900/60 to-slate-900 border border-blue-500/30 shadow-md">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-blue-500/20">
-              <div className="flex items-center gap-1.5 text-sm font-bold text-blue-400 uppercase tracking-wider">
-                <Sparkles className="w-4 h-4 text-blue-400" />
-                <span>English Executive Summary</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {currentArticle.summary_word_count && currentArticle.summary_word_count > 0 ? (
-                  <span className="text-xs text-slate-400">{currentArticle.summary_word_count} words</span>
-                ) : null}
-                <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1.5">
-                  <span>🇬🇧</span>
-                  <span>AI Summarized</span>
+          {/* Distinct ENGLISH EXECUTIVE SUMMARY Section: Inter 17px, line-height 1.75 */}
+          <div className="my-6">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-2 mb-4">
+              <h2 className="text-[12px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">
+                ENGLISH EXECUTIVE SUMMARY
+              </h2>
+              {currentArticle.summary_word_count && currentArticle.summary_word_count > 0 ? (
+                <span className="text-[11px] font-medium text-[var(--text-muted)]">
+                  {currentArticle.summary_word_count} words
                 </span>
-              </div>
+              ) : null}
             </div>
-            <div className="text-sm sm:text-base text-slate-200 leading-relaxed font-medium whitespace-pre-line space-y-4">
-              {currentArticle.english_summary}
+
+            <div className="text-[16px] sm:text-[17px] text-[var(--text-primary)] leading-[1.75] font-normal max-w-prose space-y-4">
+              {currentArticle.english_summary.split(/\n\s*\n/).map((paragraph, index) => (
+                <p key={index}>{paragraph.trim()}</p>
+              ))}
             </div>
           </div>
 
-          {/* Verified Original Source Section (No raw RSS dump) */}
-          <div className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Original Publication Source</span>
-                </span>
-                <span className="text-[11px] px-2.5 py-0.5 rounded-md bg-blue-950/60 text-blue-300 border border-blue-500/30 font-semibold">
-                  {currentArticle.source_name} ({currentArticle.original_language})
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Official dispatch from <span className="text-slate-300 font-medium">{currentArticle.region}</span> ({currentArticle.field}).
-              </p>
-              <p className="text-[11px] text-slate-500">
-                Click below to read the complete, unabridged article directly at the publisher&apos;s site.
-              </p>
+          {/* Separate SOURCE SECTION with Read Full Story button */}
+          <div className="pt-5 mt-6 border-t border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[12px]">
+            <div className="text-[var(--text-muted)] font-normal flex items-center flex-wrap gap-x-2 gap-y-1">
+              <span>Original source:</span>
+              <span className="font-semibold text-[var(--text-primary)]">{currentArticle.source_name}</span>
+              <span className="text-[var(--border-hover)]">•</span>
+              <span>{currentArticle.original_language}</span>
+              {currentArticle.region && (
+                <>
+                  <span className="text-[var(--border-hover)]">•</span>
+                  <span>{currentArticle.region}</span>
+                </>
+              )}
             </div>
 
             <a
               href={currentArticle.source_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-colors shrink-0 shadow-md shadow-blue-950/50"
+              className="h-8 px-3 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--accent-soft)] border border-[var(--border)] hover:border-[var(--accent-border)] text-[var(--text-primary)] hover:text-[var(--accent)] font-medium text-[12px] transition-colors inline-flex items-center gap-1.5 shrink-0 group cursor-pointer"
+              title={`Read full story on ${currentArticle.source_name}`}
             >
-              <span>Read Full Story on {currentArticle.source_name}</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Read Full Story</span>
+              <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
             </a>
           </div>
 
-          {/* Keywords & Tags Footer */}
-          {currentArticle.keywords && currentArticle.keywords.length > 0 && (
-            <div className="pt-4 border-t border-slate-800 flex items-center gap-2 flex-wrap text-xs">
-              <div className="flex items-center gap-1 text-slate-400 font-semibold mr-1">
-                <Tag className="w-3.5 h-3.5 text-slate-500" />
-                <span>Extracted Entities:</span>
-              </div>
-              {currentArticle.keywords.map((kw, i) => (
-                <span
-                  key={i}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-medium text-xs border border-slate-700/60"
-                >
-                  #{kw}
-                </span>
-              ))}
+          {/* Contextual Tags */}
+          {editorialTags.length >= 2 && (
+            <div className="pt-4 mt-2 flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-bold tracking-widest uppercase text-[var(--text-muted)] mr-1">
+                Tags:
+              </span>
+              {editorialTags.map((tag, idx) => {
+                const isAccent = idx === 0;
+                return (
+                  <span
+                    key={tag}
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-semibold tracking-wider uppercase transition-colors ${
+                      isAccent
+                        ? "bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent-border)]"
+                        : "bg-[var(--surface-secondary)] text-[var(--text-secondary)] border border-[var(--border)]"
+                    }`}
+                  >
+                    {tag}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>

@@ -2,18 +2,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app import models
 from app.main import app
 from app.config import settings
 from app.services.llm_pipeline import llm_pipeline
-from app.services.quiz_data import ONBOARDING_QUESTIONS, calculate_interest_graph
 from app.services.seed_data import seed_database
-from app.services.tagging import classify_and_tag
-from app.schemas.profile import OnboardingAnswer
-
-from sqlalchemy.pool import StaticPool
+from app.services.tagging import classify_and_tag, clean_and_normalize_tag, is_valid_tag
 
 # Use in-memory SQLite for testing with StaticPool so all connections share the memory DB
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -55,13 +52,6 @@ def test_health_check(client):
     assert data["llm_model"] == settings.OLLAMA_MODEL
     assert "ollama_connected" in data
 
-def test_onboarding_questions_count(client):
-    response = client.get("/api/onboarding/questions")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total_questions"] == 15
-    assert len(data["questions"]) == 15
-
 def test_ollama_status_check():
     """Verify Ollama status checker returns a valid status dictionary."""
     status = llm_pipeline.check_ollama_status()
@@ -84,35 +74,64 @@ def test_llm_pipeline_attributes_validation():
         assert key in result, f"Missing required key: {key}"
     
     assert isinstance(result["keywords"], list)
-    assert len(result["keywords"]) >= 1
+    assert len(result["keywords"]) >= 2
     assert isinstance(result["trending"], bool)
     assert isinstance(result["trending_score"], float)
 
-def test_tagging_quality():
-    """Verify intelligent tagging extracts clean concepts without noise words."""
-    field, tags = classify_and_tag(
-        title="Dr Pallakshi Prasad NEET PG Topper AIR AFMC DPS Hyderabad Success Story",
-        content="Dr Pallakshi Prasad achieved All India Rank 1 in NEET PG examination from Armed Forces Medical College.",
+def test_tagging_quality_and_context():
+    """Verify intelligent tagging extracts clean, context-aware concepts without noise words."""
+    # Test 1: Space / ISRO
+    f1, tags1 = classify_and_tag(
+        title="ISRO launches communication satellite with PSLV rocket from Sriharikota",
+        content="Indian space agency successfully achieved orbital insertion for scientific mission.",
         region="India"
     )
-    assert field == "Education & Jobs"
-    assert any("NEET PG" in t for t in tags)
-    # Ensure no fragmented noise words like 'During', 'Neither', 'Youre'
-    for t in tags:
-        assert t.lower() not in {"during", "mean", "youre", "neither", "side", "align", "took", "days"}
+    assert f1 == "Technology & AI"
+    assert "ISRO" in tags1 or "Satellite Launch" in tags1
+    assert 2 <= len(tags1) <= 4
 
-def test_interest_graph_calculation():
-    """Verify onboarding answers map correctly to normalized interest graph."""
-    answers = [
-        OnboardingAnswer(question_id=1, selected_option_ids=["q1_west"]),
-        OnboardingAnswer(question_id=6, selected_option_ids=["q6_tech"])
-    ]
-    graph = calculate_interest_graph(answers)
-    weights = graph["interest_weights"]
-    
-    assert "region:Maharashtra" in weights or "region:Gujarat" in weights
-    assert "field:Technology & AI" in weights
-    assert 0.0 <= weights["field:Technology & AI"] <= 1.0
+    # Test 2: Stock Market / Financial Markets
+    f2, tags2 = classify_and_tag(
+        title="Sensex crashes 1000 points as stock market plunges on global volatility",
+        content="Equity investors saw heavy selloff as financial markets reacted to inflation data.",
+        region="India"
+    )
+    assert f2 == "Finance & Economics"
+    assert "Stock Market" in tags2 or "Sensex" in tags2
+    assert 2 <= len(tags2) <= 4
+
+    # Test 3: Weather Alert / Heavy Rainfall
+    f3, tags3 = classify_and_tag(
+        title="Heavy rainfall in Chennai triggers weather alert and waterlogging",
+        content="Tamil Nadu coastal districts declared holiday amid cyclone warning and downpour.",
+        region="Tamil Nadu"
+    )
+    assert "Heavy Rainfall" in tags3 or "Weather Alert" in tags3
+    assert 2 <= len(tags3) <= 4
+
+    # Test 4: Elections
+    f4, tags4 = classify_and_tag(
+        title="Election Commission announces assembly polls date and voter schedule",
+        content="Political parties gearing up for state election battle with model code in effect.",
+        region="India"
+    )
+    assert f4 == "Politics"
+    assert "Elections" in tags4
+    assert 2 <= len(tags4) <= 4
+
+    # Ensure no generic stop words appear
+    all_tags = tags1 + tags2 + tags3 + tags4
+    for t in all_tags:
+        assert t.lower() not in {"news", "latest", "update", "important", "breaking", "general", "article", "report"}
+
+def test_tag_normalization_helper():
+    """Verify tag cleaning and casing helper preserves acronyms and title casing."""
+    assert clean_and_normalize_tag("#isro") == "ISRO"
+    assert clean_and_normalize_tag("stock market") == "Stock Market"
+    assert clean_and_normalize_tag("ai technology") == "AI Technology"
+    assert is_valid_tag("ISRO") is True
+    assert is_valid_tag("News") is False
+    assert is_valid_tag("Update") is False
 
 def test_user_registration_and_login(client):
     email = "testuser@example.com"
@@ -122,13 +141,12 @@ def test_user_registration_and_login(client):
     reg_res = client.post("/api/auth/register", json={
         "email": email,
         "password": password,
-        "full_name": "Test Diplomat"
+        "full_name": "Test Reader"
     })
     assert reg_res.status_code == 201
     reg_data = reg_res.json()
     assert "access_token" in reg_data
     assert reg_data["email"] == email
-    assert reg_data["completed_onboarding"] is False
 
     # 2. Login
     login_res = client.post("/api/auth/login", json={
@@ -143,66 +161,25 @@ def test_user_registration_and_login(client):
     assert me_res.status_code == 200
     assert me_res.json()["email"] == email
 
-def test_percentage_matching_rules(client):
+def test_standard_trending_news_feed(client):
     """
-    CRITICAL TEST FOR ISSUE 3:
-    1. Unauthenticated users NEVER receive match_score.
-    2. Authenticated user who hasn't completed quiz receives match_score == None.
-    3. Authenticated user who completed quiz receives populated match_score.
+    Verify standard trending news feed returns articles without personal match percentage.
+    All users receive the standard news feed.
     """
-    # 1. Unauthenticated user on foryou and filter
-    guest_fy = client.get("/api/articles/foryou")
-    assert guest_fy.status_code == 200
-    for item in guest_fy.json()["items"]:
+    res = client.get("/api/articles/trending")
+    assert res.status_code == 200
+    data = res.json()
+    assert "items" in data
+    assert len(data["items"]) > 0
+    for item in data["items"]:
         assert item["match_score"] is None
-
-    guest_filter = client.get("/api/articles?region=Europe")
-    assert guest_filter.status_code == 200
-    for item in guest_filter.json()["items"]:
-        assert item["match_score"] is None
-
-    # 2. Registered user who has NOT taken quiz
-    reg = client.post("/api/auth/register", json={
-        "email": "noquiz_user@example.com",
-        "password": "Password123!",
-        "full_name": "No Quiz User"
-    })
-    token = reg.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-
-    noquiz_fy = client.get("/api/articles/foryou", headers=headers)
-    assert noquiz_fy.status_code == 200
-    for item in noquiz_fy.json()["items"]:
-        assert item["match_score"] is None
-
-    noquiz_filter = client.get("/api/articles?field=Technology & AI", headers=headers)
-    assert noquiz_filter.status_code == 200
-    for item in noquiz_filter.json()["items"]:
-        assert item["match_score"] is None
-
-    # 3. User completes quiz
-    answers = [
-        {"question_id": 1, "selected_option_ids": ["q1_west"]},
-        {"question_id": 6, "selected_option_ids": ["q6_tech"]},
-        {"question_id": 12, "selected_option_ids": ["q12_western"]}
-    ]
-    sub = client.post("/api/onboarding/submit", json={"answers": answers}, headers=headers)
-    assert sub.status_code == 200
-    assert sub.json()["completed_onboarding"] is True
-
-    # 4. Now user SHOULD receive match_score
-    quiz_fy = client.get("/api/articles/foryou", headers=headers)
-    assert quiz_fy.status_code == 200
-    fy_items = quiz_fy.json()["items"]
-    assert len(fy_items) > 0
-    for item in fy_items:
-        assert item["match_score"] is not None
-        assert 0.0 <= item["match_score"] <= 1.0
+        assert "english_title" in item
+        assert "english_summary" in item
+        assert "keywords" in item
 
 def test_filtering_endpoints(client):
     """
-    CRITICAL TEST FOR ISSUE 1:
-    Verify region, language, and field filters work.
+    Verify region, language, and field filters work without personalization requirements.
     """
     # 1. Filter metadata endpoint
     meta_res = client.get("/api/articles/meta/filters")
@@ -217,6 +194,7 @@ def test_filtering_endpoints(client):
     assert field_res.status_code == 200
     for item in field_res.json()["items"]:
         assert "technology" in item["field"].lower()
+        assert item["match_score"] is None
 
     # 3. Filter by language
     lang_res = client.get("/api/articles?language=French")

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Search, X, RotateCcw, Filter, MapPin, Languages, BookOpen } from "lucide-react";
+import { Search, X, RotateCcw, ChevronDown } from "lucide-react";
 import { FilterMetadata } from "@/lib/api";
 
 interface FilterBarProps {
@@ -16,6 +16,7 @@ interface FilterBarProps {
   setSearchQuery: (query: string) => void;
   onResetFilters: () => void;
   totalResults: number;
+  searchInputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 const DEFAULT_REGIONS = [
@@ -60,6 +61,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   setSearchQuery,
   onResetFilters,
   totalResults,
+  searchInputRef,
 }) => {
   const regions = metadata.regions && metadata.regions.length > 0 ? metadata.regions : DEFAULT_REGIONS;
   const languages = metadata.languages && metadata.languages.length > 0 ? metadata.languages : DEFAULT_LANGUAGES;
@@ -72,174 +74,132 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     searchQuery.trim().length > 0;
 
   return (
-    <div className="bg-[#0f172a]/90 border border-slate-800 rounded-2xl p-4 sm:p-5 mb-8 backdrop-blur-xl shadow-lg">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-        {/* Search Input */}
+    <div className="bg-[var(--surface)] dark:bg-[var(--surface-secondary)] border border-[var(--border)] rounded-xl p-[18px] sm:p-5 mb-8 transition-colors duration-200">
+      {/* First Row: Search input + article count & reset */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+        {/* Search input occupying most width */}
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
+            ref={searchInputRef}
             id="input-article-search"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search headlines, keywords, tags, or topics..."
-            className="w-full pl-10 pr-9 py-2 text-xs sm:text-sm bg-slate-900/90 border border-slate-700/80 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+            placeholder="Search headlines, keywords, tags, or topics in English..."
+            className="w-full h-[42px] pl-10 pr-10 text-[14px] bg-[var(--input-background)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors"
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+              aria-label="Clear search query"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer p-1"
             >
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {/* Results Counter & Reset */}
-        <div className="flex items-center justify-between md:justify-end gap-3 text-xs text-slate-400 shrink-0">
-          <span className="font-medium">
-            Showing <strong className="text-white font-bold">{totalResults}</strong> articles
+        {/* Article count aligned to the right + optional reset */}
+        <div className="flex items-center justify-between md:justify-end gap-3 text-[13px] text-[var(--text-secondary)] shrink-0">
+          <span className="font-normal">
+            Showing <strong className="text-[var(--text-primary)] font-semibold">{totalResults}</strong> articles
           </span>
           {isFiltered && (
             <button
               id="btn-reset-filters"
+              type="button"
               onClick={onResetFilters}
-              className="flex items-center gap-1 px-2.5 py-1 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-[var(--accent)] hover:bg-[var(--accent-soft)] rounded-md border border-[var(--border)] transition-colors cursor-pointer"
             >
-              <RotateCcw className="w-3 h-3 text-blue-400" />
+              <RotateCcw className="w-3 h-3" />
               <span>Reset Filters</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Dropdown Filters Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* Region Filter */}
+      {/* Second Row: Three equally sized filter controls */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* 1. REGION */}
         <div>
-          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-            <MapPin className="w-3 h-3 text-blue-400" />
-            <span>Region</span>
-          </label>
-          <select
-            id="select-region"
-            value={selectedRegion}
-            onChange={(e) => setSelectedRegion(e.target.value)}
-            className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          <label 
+            htmlFor="select-region"
+            className="block text-[12px] font-medium uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
           >
-            <option value="All">All Global Regions</option>
-            {regions.map((reg) => (
-              <option key={reg} value={reg}>
-                {reg}
-              </option>
-            ))}
-          </select>
+            REGION
+          </label>
+          <div className="relative">
+            <select
+              id="select-region"
+              value={selectedRegion}
+              onChange={(e) => setSelectedRegion(e.target.value)}
+              className="w-full h-[40px] pl-3.5 pr-9 text-[13px] sm:text-[14px] bg-[var(--input-background)] border border-[var(--border)] hover:border-[var(--border-hover)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/15 focus:border-[var(--accent)] cursor-pointer transition-all appearance-none"
+            >
+              <option value="All">All Global Regions</option>
+              {regions.map((reg) => (
+                <option key={reg} value={reg}>
+                  {reg}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-[var(--text-muted)] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition-transform" />
+          </div>
         </div>
 
-        {/* Original Language Filter */}
+        {/* 2. ORIGINAL LANGUAGE */}
         <div>
-          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-            <Languages className="w-3 h-3 text-emerald-400" />
-            <span>Original Language</span>
-          </label>
-          <select
-            id="select-language"
-            value={selectedLanguage}
-            onChange={(e) => setSelectedLanguage(e.target.value)}
-            className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          <label 
+            htmlFor="select-language"
+            className="block text-[12px] font-medium uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
           >
-            <option value="All">All Source Languages</option>
-            {languages.map((lang) => (
-              <option key={lang} value={lang}>
-                {lang}
-              </option>
-            ))}
-          </select>
+            ORIGINAL LANGUAGE
+          </label>
+          <div className="relative">
+            <select
+              id="select-language"
+              value={selectedLanguage}
+              onChange={(e) => setSelectedLanguage(e.target.value)}
+              className="w-full h-[40px] pl-3.5 pr-9 text-[13px] sm:text-[14px] bg-[var(--input-background)] border border-[var(--border)] hover:border-[var(--border-hover)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/15 focus:border-[var(--accent)] cursor-pointer transition-all appearance-none"
+            >
+              <option value="All">All Source Languages</option>
+              {languages.map((lang) => (
+                <option key={lang} value={lang}>
+                  {lang}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-[var(--text-muted)] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition-transform" />
+          </div>
         </div>
 
-        {/* Field / Topic Filter */}
+        {/* 3. CATEGORY */}
         <div>
-          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-            <BookOpen className="w-3 h-3 text-indigo-400" />
-            <span>Editorial Field</span>
-          </label>
-          <select
-            id="select-field"
-            value={selectedField}
-            onChange={(e) => setSelectedField(e.target.value)}
-            className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          <label 
+            htmlFor="select-field"
+            className="block text-[12px] font-medium uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
           >
-            <option value="All">All Editorial Topics</option>
-            {fields.map((field) => (
-              <option key={field} value={field}>
-                {field}
-              </option>
-            ))}
-          </select>
+            CATEGORY
+          </label>
+          <div className="relative">
+            <select
+              id="select-field"
+              value={selectedField}
+              onChange={(e) => setSelectedField(e.target.value)}
+              className="w-full h-[40px] pl-3.5 pr-9 text-[13px] sm:text-[14px] bg-[var(--input-background)] border border-[var(--border)] hover:border-[var(--border-hover)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/15 focus:border-[var(--accent)] cursor-pointer transition-all appearance-none"
+            >
+              <option value="All">All Editorial Categories</option>
+              {fields.map((fld) => (
+                <option key={fld} value={fld}>
+                  {fld}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-[var(--text-muted)] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition-transform" />
+          </div>
         </div>
       </div>
-
-      {/* Active Filter Chips */}
-      {isFiltered && (
-        <div className="mt-3.5 pt-3 border-t border-slate-800/80 flex items-center gap-2 flex-wrap text-xs">
-          <span className="text-slate-400 text-[11px] flex items-center gap-1">
-            <Filter className="w-3 h-3 text-blue-400" />
-            <span>Active:</span>
-          </span>
-
-          {selectedRegion !== "All" && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-950/80 border border-blue-500/40 text-blue-300 text-[11px]">
-              <span>Region: {selectedRegion}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedRegion("All")}
-                className="hover:text-white cursor-pointer ml-0.5"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-
-          {selectedLanguage !== "All" && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-[11px]">
-              <span>Language: {selectedLanguage}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedLanguage("All")}
-                className="hover:text-white cursor-pointer ml-0.5"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-
-          {selectedField !== "All" && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-950/80 border border-purple-500/40 text-purple-300 text-[11px]">
-              <span>Field: {selectedField}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedField("All")}
-                className="hover:text-white cursor-pointer ml-0.5"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-
-          {searchQuery.trim() && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[11px]">
-              <span>Search: &quot;{searchQuery.trim()}&quot;</span>
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="hover:text-white cursor-pointer ml-0.5"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 };

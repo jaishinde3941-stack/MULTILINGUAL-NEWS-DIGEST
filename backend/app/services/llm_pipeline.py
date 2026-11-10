@@ -39,7 +39,7 @@ NEWS_SUMMARY_SCHEMA = {
         "keywords": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "3 to 5 key entity keywords or proper nouns"
+            "description": "2 to 4 concise, contextually relevant English tags (1 to 3 words each in Title Case) representing the exact news subjects, entities, or events. Example: Space Exploration, ISRO, Satellite Launch. Avoid generic words like News or Update."
         },
         "trending": {
             "type": "boolean",
@@ -57,9 +57,10 @@ SYSTEM_PROMPT = """You are an elite multilingual intelligence analyst and execut
 Your goal is to ingest foreign news articles, analyze the facts, and generate:
 1. "english_title": An accurate, factual headline strictly in fluent English (Latin script).
 2. "english_summary": A factual, cohesive English executive summary of approximately 80 to 120 words when sufficient source details exist.
+3. "keywords": 2 to 4 concise, context-aware English tags (1 to 3 words each in Title Case). Accurately represent the article's core subjects, key organizations, locations, or events (e.g. "Space Exploration", "Stock Market", "Weather Alert", "Elections"). NEVER output generic filler like "News", "Latest", "Update", "Important", "Report", or "Breaking".
 
 CRITICAL OPERATIONAL RULES:
-- Do NOT translate the full article text. Generate ONLY the English headline and summary.
+- Do NOT translate the full article text. Generate ONLY the English headline, summary, and contextual tags.
 - Strictly output in English (Latin alphabet). NEVER echo foreign scripts into the English fields.
 - Strictly adhere to facts explicitly stated in the source. NEVER invent, extrapolate, or speculate.
 - If an article is very brief, summarize all stated facts concisely without adding filler or imaginary details.
@@ -401,10 +402,27 @@ class LLMPipeline:
             # Successful valid generation!
             summary_words = len(eng_summary.split())
             field = str(data.get("field", "General News")).strip()
-            keywords = [str(k).strip() for k in data.get("keywords", []) if str(k).strip()][:5]
-            if not keywords:
-                from app.services.tagging import classify_and_tag
-                _, keywords = classify_and_tag(eng_title, eng_summary, "", region)
+            
+            from app.services.tagging import clean_and_normalize_tag, is_valid_tag, classify_and_tag
+            raw_keywords = [str(k).strip() for k in data.get("keywords", []) if str(k).strip()]
+            valid_keywords = []
+            seen_kw = set()
+            for kw in raw_keywords:
+                norm_kw = clean_and_normalize_tag(kw)
+                if norm_kw and is_valid_tag(norm_kw) and norm_kw.lower() not in seen_kw:
+                    valid_keywords.append(norm_kw)
+                    seen_kw.add(norm_kw.lower())
+
+            if len(valid_keywords) < 2:
+                _, fallback_tags = classify_and_tag(eng_title, eng_summary, "", region)
+                for ft in fallback_tags:
+                    if ft.lower() not in seen_kw:
+                        valid_keywords.append(ft)
+                        seen_kw.add(ft.lower())
+                    if len(valid_keywords) >= 4:
+                        break
+
+            keywords = valid_keywords[:4]
 
             trending = bool(data.get("trending", False))
             trending_score = float(data.get("trending_score", 0.65 if trending else 0.5))

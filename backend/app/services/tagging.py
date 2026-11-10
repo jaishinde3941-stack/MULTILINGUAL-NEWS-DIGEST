@@ -1,140 +1,196 @@
 """
 Tagging & Taxonomy Service: High-precision editorial categorization and concept extraction.
+Produces 2 to 4 attractive, context-aware, concise English tags per article.
 """
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Set
+
+# Acronyms that should remain fully capitalized
+SPECIAL_ACRONYMS = {
+    "isro": "ISRO",
+    "nasa": "NASA",
+    "ai": "AI",
+    "bjp": "BJP",
+    "congress": "Congress",
+    "aap": "AAP",
+    "tmc": "TMC",
+    "tdp": "TDP",
+    "ysrcp": "YSRCP",
+    "rbi": "RBI",
+    "sebi": "SEBI",
+    "sensex": "Sensex",
+    "nifty": "Nifty",
+    "neet": "NEET",
+    "upsc": "UPSC",
+    "drdo": "DRDO",
+    "gmc": "GMC",
+    "nhm": "NHM",
+    "imd": "IMD",
+    "ipl": "IPL",
+    "bcci": "BCCI",
+    "icc": "ICC",
+    "who": "WHO",
+    "un": "UN",
+    "ec": "Election Commission",
+}
+
+GENERIC_STOP_WORDS: Set[str] = {
+    "news", "latest", "update", "updates", "important", "breaking",
+    "general", "article", "report", "reports", "today", "yesterday",
+    "story", "stories", "top stories", "daily", "bulletin", "feed",
+    "information", "details", "headline", "post", "dispatch"
+}
 
 CONCEPT_RULES: List[Tuple[str, str, str]] = [
-    # (Regex pattern, Tag Name, Associated Field)
-    # Politics & Governance
-    (r"\bycp\b|\bjagan\b|ongole", "YS Jagan", "Politics"),
-    (r"\bycp\b|ysrcp", "YSRCP", "Politics"),
-    (r"mahua moitra", "Mahua Moitra", "Politics"),
-    (r"chandrababu", "Chandrababu Naidu", "Politics"),
-    (r"\bec defence\b|\belection commission\b|\bec\b", "Election Commission", "Politics"),
-    (r"tmc|trinamool", "TMC", "Politics"),
-    (r"tdp", "TDP", "Politics"),
-    (r"cockroach party|mumbai protest", "Mumbai Politics", "Politics"),
-    (r"ramesh mhatre|corporator", "Local Governance", "Politics"),
-    (r"supreme court", "Supreme Court", "Politics"),
-    (r"gmc election", "GMC Elections", "Politics"),
-    (r"\baap\b|aam aadmi party", "Aam Aadmi Party", "Politics"),
-    (r"candidate form rejected|form rejected", "Candidate Scrutiny", "Politics"),
-    (r"masood azhar", "Masood Azhar", "Politics"),
-    (r"\bjem\b|jaish-e-mohammed", "Counter-Terrorism", "Politics"),
-    (r"pakistan|kabul|afghanistan", "Foreign Policy", "Politics"),
-    (r"akhilesh yadav", "Akhilesh Yadav", "Politics"),
-    (r"gorakhpur university protest|police si shouting|police lathicharge", "Student Protest", "Politics"),
-    (r"haldwani|selja kumari", "Congress Party", "Politics"),
-    (r"dehradun protest", "Uttarakhand Politics", "Politics"),
-    (r"rajbhar|op rajbhar", "OP Rajbhar", "Politics"),
-    (r"mosque demolition", "UP Politics", "Politics"),
-    (r"tr balu|t\.?r\.? balu", "TR Baalu", "Politics"),
-    (r"aadhav| CTR |ctr should", "Tamil Nadu Politics", "Politics"),
-    (r"chief minister vijay|thalapathy vijay|minister vijay|rings to people", "Thalapathy Vijay", "Politics"),
-    (r"cjp align|keralas contemporary politics", "Kerala Politics", "Politics"),
-    (r"ganesh kumar|pathanapuram|vanchiyoor", "KB Ganesh Kumar", "Politics"),
-    (r"pune congress|dnyanesh kumar", "Maharashtra Politics", "Politics"),
-    (r"election commission removal", "Election Commission", "Politics"),
+    # (Regex pattern with strict word boundaries, Tag Name, Associated Field)
+    # Space & Science
+    (r"\bisro\b|\bchandrayaan\b|\bgaganyaan\b|\bsriharikota\b", "ISRO", "Technology & AI"),
+    (r"\bsatellite launch\b|\blaunch vehicle\b|\bpslv\b|\bgslv\b|\bsslv\b|\brocket launch\b", "Satellite Launch", "Technology & AI"),
+    (r"\bspace exploration\b|\bdeep space\b|\borbit insertion\b|\blunar mission\b", "Space Exploration", "Technology & AI"),
+    (r"\bindian science\b|\bindigenous technology\b|\bspace research\b", "Indian Science", "Technology & AI"),
+    (r"\bnasa\b|\bartemis\b|\bjames webb\b|\bspacex\b", "Space Exploration", "Technology & AI"),
 
-    # Health & Wellness
-    (r"bee sting|sting", "Bee Sting", "Health & Wellness"),
-    (r"first aid", "First Aid", "Health & Wellness"),
-    (r"kidney test|kft report|serum creatinine|egfr|ckd signs", "Kidney Health", "Health & Wellness"),
-    (r"creatinine", "Medical Diagnostics", "Health & Wellness"),
-    (r"glowing skin|tanning remove|potato aloe vera|face pack", "Skincare", "Health & Wellness"),
-    (r"aloe vera|natural remedies|potato for glowing", "Natural Remedies", "Health & Wellness"),
-    (r"hibiscus|hair conditioner|soft shiny hair", "Hair Care", "Health & Wellness"),
-    (r"sweating during workout|sweat|workout mean|not losing fat", "Fitness Science", "Health & Wellness"),
-    (r"losing fat|metabolism", "Weight Management", "Health & Wellness"),
-    (r"mental health|suicide|loneliness", "Mental Health", "Health & Wellness"),
+    # Financial Markets & Economy
+    (r"\bstock market\b|\bshare market\b|\bwall street\b|\bdalal street\b", "Stock Market", "Finance & Economics"),
+    (r"\bsensex\b|\bbse index\b", "Sensex", "Finance & Economics"),
+    (r"\bnifty\b|\bnifty 50\b|\bnse index\b", "Nifty", "Finance & Economics"),
+    (r"\bmarket volatility\b|\bmarket crash\b|\bbear market\b|\bbull run\b|\bshares plunge\b|\bmarket rally\b", "Market Volatility", "Finance & Economics"),
+    (r"\bfinancial markets\b|\bequity markets\b|\bmutual funds\b|\btrading session\b", "Financial Markets", "Finance & Economics"),
+    (r"\breserve bank\b|\brbi\b|\brepo rate\b|\bmonetary policy\b", "Banking & RBI", "Finance & Economics"),
+    (r"\binflation\b|\bcpi\b|\beconomic growth\b|\bgdp\b", "Macroeconomics", "Finance & Economics"),
+    (r"\bgold rate\b|\bgold prices\b|\bbullion\b", "Gold Rate", "Finance & Economics"),
+    (r"\bcommodity prices\b|\bprecious metals\b", "Commodities Market", "Finance & Economics"),
 
-    # Agriculture & Rural
-    (r"winter vegetable|nursery preparation|grow tomato|cauliflower", "Horticulture", "Agriculture & Rural"),
-    (r"seeds|vegetable farming", "Crop Cultivation", "Agriculture & Rural"),
-    (r"dairy farming|gir cow|foreign breeds", "Dairy Farming", "Agriculture & Rural"),
-    (r"gir cow|indigenous cattle", "Livestock Management", "Agriculture & Rural"),
-    (r"farmer suicide|debt burden|amravati farmer", "Agrarian Crisis", "Agriculture & Rural"),
-    (r"debt burden|kisan", "Farmer Welfare", "Agriculture & Rural"),
+    # Weather & Climate
+    (r"\bheavy rain\b|\bheavy rainfall\b|\btorrential downpour\b|\bwaterlogging\b|\bcloudburst\b", "Heavy Rainfall", "States & Regional"),
+    (r"\bweather alert\b|\bred alert\b|\borange alert\b|\bcyclone alert\b", "Weather Alert", "States & Regional"),
+    (r"\bchennai rain\b|\bchennai weather\b|\bmeenambakkam\b", "Chennai Weather", "States & Regional"),
+    (r"\bmumbai rain\b|\bmumbai weather\b|\bcolaba rain\b", "Mumbai Weather", "States & Regional"),
+    (r"\btamil nadu weather\b|\bcoastal tamil nadu\b", "Tamil Nadu", "States & Regional"),
+    (r"\bmonsoon\b|\bsouthwest monsoon\b|\bnortheast monsoon\b|\bcyclone\b", "Monsoon & Climate", "States & Regional"),
+    (r"\bheatwave\b|\bdrought\b", "Climate Alert", "States & Regional"),
 
-    # Education & Jobs
-    (r"neet pg|pallakshi prasad|air afmc|topper", "NEET PG", "Education & Jobs"),
-    (r"afmc|dps hyderabad|medical topper", "Medical Education", "Education & Jobs"),
-    (r"study in germany|german universities|indian students", "Study Abroad", "Education & Jobs"),
-    (r"cost for indian students", "Higher Education", "Education & Jobs"),
-    (r"food safety officer|btsc vacancy|btsc", "BTSC Vacancy", "Education & Jobs"),
-    (r"bihar food safety|recruitment btsc", "Government Recruitment", "Education & Jobs"),
-    (r"ignou recruitment|non teaching|assistant director", "IGNOU Recruitment", "Education & Jobs"),
-    (r"government jobs|posts check eligibility", "Public Sector Careers", "Education & Jobs"),
-    (r"drdo internship|engineering and science students", "DRDO Internship", "Education & Jobs"),
-    (r"drdo|defense research", "STEM Careers", "Education & Jobs"),
-    (r"shruti arora|ips follows|chief secretaries", "UPSC & Civil Services", "Education & Jobs"),
-    (r"ips officer|haryana cadre", "Women In Leadership", "Education & Jobs"),
-    (r"nhm staff nurse|staff nurse recruitment|nhm", "NHM Nursing", "Education & Jobs"),
-    (r"staff nurse|nursing posts", "Healthcare Careers", "Education & Jobs"),
-
-    # Entertainment & Cinema
-    (r"drishyam|drishyam the conclusion|advance booking", "Drishyam", "Entertainment & Cinema"),
-    (r"advance booking tickets|national chain", "Box Office", "Entertainment & Cinema"),
-    (r"lata mangeshkar|dilip kumar|dilip kumars", "Lata Mangeshkar", "Entertainment & Cinema"),
-    (r"learned urdu|indian cinema", "Bollywood History", "Entertainment & Cinema"),
-    (r"fahadh faasil|dont trouble the trouble", "Fahadh Faasil", "Entertainment & Cinema"),
-    (r"pre release event|speech at", "Film Launch", "Entertainment & Cinema"),
-    (r"ss rajamouli|rajamouli|director ss", "SS Rajamouli", "Entertainment & Cinema"),
-    (r"special show permission|trisha|surya|karuppu", "Kollywood Cinema", "Entertainment & Cinema"),
-    (r"surya film karuppu|trisha surya", "Surya & Trisha", "Entertainment & Cinema"),
-    (r"mohan babu|paradise success meet", "Mohan Babu", "Entertainment & Cinema"),
-    (r"telugu cinema|tollywood", "Tollywood", "Entertainment & Cinema"),
+    # Elections & Politics
+    (r"\belection commission\b|\bassembly polls\b|\blok sabha\b|\bvoter turnout\b|\bpolling booth\b|\belection\b|\belections\b", "Elections", "Politics"),
+    (r"\bpolitical developments\b|\bcoalition\b|\bfloor test\b|\bpolitical crisis\b|\bcabinet reshuffle\b", "Political Developments", "Politics"),
+    (r"\bsupreme court\b|\bhigh court\b|\bverdict\b|\bbench\b|\bcji\b|\bconstitution bench\b|\bjudiciary\b", "Supreme Court", "Politics"),
+    (r"\bdeepfake\b|\bdeepfakes\b|\bmisinformation\b", "Deepfake Regulation", "Technology & AI"),
+    (r"\bycp\b|\bjagan\b|\bysrcp\b", "YSRCP", "Politics"),
+    (r"\bchandrababu\b|\btdp\b", "TDP", "Politics"),
+    (r"\bmahua moitra\b|\btrinamool\b|\btmc\b", "TMC", "Politics"),
+    (r"\baap\b|\baam aadmi party\b|\barvind kejriwal\b", "Aam Aadmi Party", "Politics"),
+    (r"\bbjp\b|\bbharatiya janata party\b|\bnda\b", "BJP", "Politics"),
+    (r"\bcongress party\b|\brahul gandhi\b|\bmallikarjun kharge\b", "Congress Party", "Politics"),
+    (r"\bakhilesh yadav\b|\bsamajwadi party\b", "Akhilesh Yadav", "Politics"),
+    (r"\bthalapathy vijay\b|\btamizhaga vettri kazhagam\b", "Tamil Nadu Politics", "Politics"),
+    (r"\bkerala politics\b|\bldf\b|\budf\b|\bpinarayi\b", "Kerala Politics", "States & Regional"),
+    (r"\bmaharashtra politics\b|\bmahayuti\b|\bmaha vikas aghadi\b", "Maharashtra Politics", "States & Regional"),
+    (r"\bcounter-terrorism\b|\bmasood azhar\b|\binfiltrator\b", "Counter-Terrorism", "Politics"),
+    (r"\bforeign policy\b|\bdiplomatic ties\b|\bbilateral summit\b", "Foreign Policy", "Politics"),
 
     # Technology & AI
-    (r"ai traffic cameras|ai traffic|cameras mistake|traffic cameras", "AI Traffic Cameras", "Technology & AI"),
-    (r"artificial intelligence|\bai\b", "Artificial Intelligence", "Technology & AI"),
-    (r"traffic enforcement|challan controversy", "Smart Infrastructure", "Technology & AI"),
+    (r"\bartificial intelligence\b|\bai\b|\bgenerative ai\b|\bllm\b|\bmachine learning\b", "Artificial Intelligence", "Technology & AI"),
+    (r"\btraffic cameras\b|\bai surveillance\b|\bsmart camera\b|\bchallan controversy\b", "Smart Infrastructure", "Technology & AI"),
+    (r"\bcyber security\b|\bransomware\b|\bdata breach\b|\bcyber attack\b", "Cybersecurity", "Technology & AI"),
+    (r"\bsemiconductor\b|\bchip manufacturing\b|\bfab plant\b", "Semiconductors", "Technology & AI"),
 
-    # Finance & Economics
-    (r"gold traders|protest outside govt|demand withdrawal", "Bullion Market", "Finance & Economics"),
-    (r"gold rate|prices fall further|gold drop sharply", "Gold Rate", "Finance & Economics"),
-    (r"commodity prices|precious metals", "Commodities Market", "Finance & Economics"),
-    (r"trade protest|tax rules", "Trade & Commerce", "Finance & Economics"),
+    # Sports
+    (r"\bcricket\b|\bipl\b|\btest match\b|\bbcci\b|\brohit sharma\b|\bvirat kohli\b", "Cricket", "Sports"),
+    (r"\bchampions trophy\b|\bworld cup\b|\btournament\b", "Sports Championship", "Sports"),
+    (r"\bfootball\b|\bfifa\b|\bpremier league\b|\bchampions league\b", "Football", "Sports"),
+    (r"\bolympics\b|\bathletics\b|\bbadminton\b|\btennis\b", "Athletics", "Sports"),
 
-    # Culture & Society
-    (r"paryushan parva|kshama vani|balraj sanghai", "Paryushan Parva", "Culture & Society"),
-    (r"spiritual significance|jainism", "Spirituality", "Culture & Society"),
-    (r"tiruchuli|thirumeninathar temple", "Temple Architecture", "Culture & Society"),
-    (r"tamil heritage|shaivism", "Cultural Heritage", "Culture & Society"),
-    (r"special dispatch from vikatan|vikatan", "Regional Features", "Culture & Society"),
-    (r"japan rental family|fake resignation party|avoid loneliness", "Social Trends", "Culture & Society"),
-    (r"gen z|loneliness", "Sociology", "Culture & Society"),
+    # Health & Wellness
+    (r"\bkidney test\b|\bkft report\b|\bserum creatinine\b|\begfr\b|\bckd signs\b", "Kidney Health", "Health & Wellness"),
+    (r"\bcreatinine\b|\bdiagnostic test\b|\bblood report\b", "Medical Diagnostics", "Health & Wellness"),
+    (r"\bskincare\b|\baloe vera\b|\bglowing skin\b|\bface pack\b", "Skincare", "Health & Wellness"),
+    (r"\bmental health\b|\bdepression\b|\btherapy\b|\bwellness\b", "Mental Health", "Health & Wellness"),
+    (r"\bcardiac health\b|\bheart disease\b|\bcardiology\b", "Cardiology", "Health & Wellness"),
+    (r"\bfirst aid\b|\bemergency care\b|\bbee sting\b", "Emergency Care", "Health & Wellness"),
 
-    # States & Regional (Incidents, Weather, Crime, Public Safety)
-    (r"chuda house breaking|theft lakh jewellery", "Jewellery Theft", "States & Regional"),
-    (r"house breaking|theft recovered", "Law & Order", "States & Regional"),
-    (r"singrauli influencer|nidhi tiwari", "Influencer News", "States & Regional"),
-    (r"navsari hit and run|audi car accident|shivang patel", "Hit & Run", "States & Regional"),
-    (r"audi accident|car accident", "Road Safety", "States & Regional"),
-    (r"thief took silver|returned it|temple after days", "Temple Theft", "States & Regional"),
-    (r"temple relics|moral turnaround", "Human Interest", "States & Regional"),
-    (r"low pressure area|andaman sea|imd alerts|heavy rains", "Weather Alert", "States & Regional"),
-    (r"cyclone warning|heavy rainfall", "Monsoon & Climate", "States & Regional"),
-    (r"school bus accident|leaves students injured", "School Bus Safety", "States & Regional"),
-    (r"student safety|traffic mishap", "Accident & Rescue", "States & Regional"),
-    (r"two people drowned|temple pool", "Public Safety", "States & Regional"),
-    (r"drowning incident|temple pool mishap", "Emergency Response", "States & Regional"),
+    # Education & Careers
+    (r"\bneet pg\b|\bmedical entrance\b|\baiims\b|\bafmc\b", "NEET PG", "Education & Jobs"),
+    (r"\bupsc\b|\bcivil services\b|\bias officer\b|\bips officer\b", "Civil Services", "Education & Jobs"),
+    (r"\brecruitment\b|\bjob vacancy\b|\bhiring notification\b|\bbtsc\b", "Government Recruitment", "Education & Jobs"),
+    (r"\bstudy abroad\b|\bforeign universities\b|\bscholarship\b", "Higher Education", "Education & Jobs"),
+    (r"\bdrdo internship\b|\bengineering students\b|\binternship\b", "STEM Careers", "Education & Jobs"),
+
+    # Agriculture & Rural
+    (r"\bfarmer suicide\b|\bdebt burden\b|\bcrop loss\b|\bagrarian\b", "Agrarian Crisis", "Agriculture & Rural"),
+    (r"\bcrop cultivation\b|\bhorticulture\b|\bvegetable farming\b|\bseeds\b", "Crop Cultivation", "Agriculture & Rural"),
+    (r"\bdairy farming\b|\bgir cow\b|\bindigenous cattle\b", "Dairy Farming", "Agriculture & Rural"),
+
+    # Entertainment & Cinema
+    (r"\bbox office\b|\badvance booking\b|\btheatrical release\b", "Box Office", "Entertainment & Cinema"),
+    (r"\bdrishyam\b|\bmohanlal\b|\bjeethu joseph\b", "Cinema News", "Entertainment & Cinema"),
+    (r"\btollywood\b|\btelugu cinema\b|\bss rajamouli\b", "Tollywood", "Entertainment & Cinema"),
+    (r"\bkollywood\b|\btamil cinema\b|\bactor surya\b|\btrisha\b", "Kollywood", "Entertainment & Cinema"),
+    (r"\bbollywood\b|\bhindi cinema\b|\blata mangeshkar\b", "Bollywood", "Entertainment & Cinema"),
+
+    # Public Safety & Regional Incidents
+    (r"\bhit and run\b|\bcar accident\b|\bfatal crash\b|\broad accident\b", "Road Safety", "States & Regional"),
+    (r"\bdrowning incident\b|\btemple pool\b|\brescue operation\b", "Public Safety", "States & Regional"),
+    (r"\bjewellery theft\b|\bburglary\b|\bpolice arrest\b", "Law & Order", "States & Regional"),
+    (r"\bfire breakout\b|\bblaze\b|\bfirefighters\b", "Emergency Services", "States & Regional"),
 ]
+
+def format_word_part(part: str) -> str:
+    pl = part.lower()
+    if pl in SPECIAL_ACRONYMS:
+        return SPECIAL_ACRONYMS[pl]
+    if len(pl) > 1 and part.isupper():
+        return part
+    return part.capitalize()
+
+def format_tag_casing(tag: str) -> str:
+    """Format tag into Title Case while preserving recognized acronyms, slashes, and hyphens."""
+    words = tag.strip().split()
+    formatted = []
+    for w in words:
+        if "/" in w:
+            formatted.append("/".join(format_word_part(sub) for sub in w.split("/")))
+        elif "-" in w:
+            formatted.append("-".join(format_word_part(sub) for sub in w.split("-")))
+        else:
+            formatted.append(format_word_part(w))
+    return " ".join(formatted)
+
+def clean_and_normalize_tag(raw: str) -> str:
+    """Strip hashtags, special characters, and extra spaces from a tag."""
+    cleaned = re.sub(r'^[#@\*\-_]+', '', raw)
+    cleaned = re.sub(r'[^\w\s\-/&]', '', cleaned)
+    cleaned = " ".join(cleaned.split())
+    if not cleaned:
+        return ""
+    return format_tag_casing(cleaned)
+
+def is_valid_tag(tag: str) -> bool:
+    """Validate that tag is meaningful, concise (1-3 words), and non-generic."""
+    if not tag or len(tag) < 2 or len(tag) > 35:
+        return False
+    words = tag.split()
+    if len(words) > 4:
+        return False
+    if tag.lower() in GENERIC_STOP_WORDS:
+        return False
+    if len(words) == 1 and words[0].lower() in GENERIC_STOP_WORDS:
+        return False
+    return True
 
 def classify_and_tag(title: str, content: str = "", url: str = "", region: str = "") -> Tuple[str, List[str]]:
     """
-    Intelligently deduce editorial field and generate top-tier keyword tags
-    for any news article.
+    Intelligently deduce editorial field and generate 2 to 4 high-precision,
+    context-aware English tags for any news article.
     """
-    combined = f"{title.lower()} {content.lower()[:300]} {url.lower()}"
-    matched_tags = []
+    combined = f"{title.lower()} {content.lower()[:600]} {url.lower()}"
+    matched_tags: List[str] = []
     field_votes = {}
 
     for pattern, tag, field in CONCEPT_RULES:
-        if re.search(pattern, combined):
-            if tag not in matched_tags:
-                matched_tags.append(tag)
+        if re.search(pattern, combined, re.IGNORECASE):
+            clean_tag = format_tag_casing(tag)
+            if clean_tag not in matched_tags and is_valid_tag(clean_tag):
+                matched_tags.append(clean_tag)
             field_votes[field] = field_votes.get(field, 0) + 1
 
     # Determine dominant field
@@ -143,25 +199,40 @@ def classify_and_tag(title: str, content: str = "", url: str = "", region: str =
     else:
         best_field = "States & Regional"
 
-    # Always ensure 3-5 tags
-    if best_field not in matched_tags and len(matched_tags) < 4:
-        matched_tags.insert(0, best_field)
+    # If few specific matches found, derive contextual tags from region
+    if len(matched_tags) < 2 and region and region.lower() != "global":
+        region_tag = format_tag_casing(region)
+        if region_tag not in matched_tags and is_valid_tag(region_tag):
+            matched_tags.append(region_tag)
 
-    if region and region not in matched_tags and len(matched_tags) < 4:
-        matched_tags.append(region)
+    if len(matched_tags) < 2 and best_field and best_field not in matched_tags:
+        field_tag = format_tag_casing(best_field)
+        if is_valid_tag(field_tag):
+            matched_tags.append(field_tag)
 
-    # Clean deduplicated tags
-    final_tags = []
-    seen = set()
+    # Final cleanup: deduplicate and guarantee 2 to 4 tags
+    final_tags: List[str] = []
+    seen: Set[str] = set()
     for t in matched_tags:
-        tl = t.strip().lower()
-        if tl not in seen:
-            final_tags.append(t.strip())
+        cleaned = clean_and_normalize_tag(t)
+        tl = cleaned.lower()
+        if cleaned and is_valid_tag(cleaned) and tl not in seen:
+            final_tags.append(cleaned)
             seen.add(tl)
-        if len(final_tags) >= 5:
+        if len(final_tags) >= 4:
             break
 
-    if len(final_tags) < 3:
-        final_tags.append("Top Stories")
+    # Guarantee at least 2 context-aware tags
+    if len(final_tags) < 2:
+        if best_field == "Technology & AI":
+            final_tags.extend([t for t in ["Technology", "Innovation"] if t.lower() not in seen])
+        elif best_field == "Finance & Economics":
+            final_tags.extend([t for t in ["Financial Markets", "Economy"] if t.lower() not in seen])
+        elif best_field == "Politics":
+            final_tags.extend([t for t in ["Politics", "Governance"] if t.lower() not in seen])
+        elif best_field == "Sports":
+            final_tags.extend([t for t in ["Sports", "Athletics"] if t.lower() not in seen])
+        else:
+            final_tags.extend([t for t in ["Regional Affairs", "Public Policy"] if t.lower() not in seen])
 
-    return best_field, final_tags[:5]
+    return best_field, final_tags[:4]

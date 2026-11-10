@@ -1,21 +1,33 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Newsreader, Noto_Sans_Devanagari } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
   subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const newsreader = Newsreader({
   subsets: ["latin"],
+  variable: "--font-newsreader",
+  display: "swap",
+  style: ["normal", "italic"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const notoDevanagari = Noto_Sans_Devanagari({
+  subsets: ["devanagari"],
+  variable: "--font-noto-devanagari",
+  display: "swap",
+  weight: ["500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
-  title: "PolyglotDigest | Global News Intelligence in English",
-  description: "Real-time international journalism aggregation across multiple foreign languages, translated into fluent English, distilled into executive briefings, and personalized to your strategic interests.",
-  keywords: ["news digest", "multilingual news", "global intelligence", "executive briefings", "ai translation", "personalized news feed"]
+  title: "अख़बार वाले | Global News Briefing in Clear English",
+  description: "Global stories. Clear English. One place. Premium multilingual news curation and synthesis powered by local AI.",
+  keywords: ["akhbar wale", "news digest", "multilingual news", "global news briefing", "english news headlines", "editorial journalism"]
 };
 
 export default function RootLayout({
@@ -24,11 +36,33 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+    <html 
+      lang="en" 
+      suppressHydrationWarning
+      className={`${inter.variable} ${newsreader.variable} ${notoDevanagari.variable}`}
     >
-      <body className="min-h-full flex flex-col bg-[#090d16] text-slate-100 selection:bg-blue-600 selection:text-white">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var saved = localStorage.getItem('akhbar_theme');
+                  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  var theme = saved || (prefersDark ? 'dark' : 'light');
+                  document.documentElement.setAttribute('data-theme', theme);
+                  if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--text-primary)] antialiased transition-colors duration-200">
         {children}
       </body>
     </html>

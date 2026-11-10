@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, desc, func
+from sqlalchemy import or_, and_, desc, func
 from typing import List, Optional
 
 from app.database import get_db
@@ -9,7 +9,6 @@ from app.models.bookmark import Bookmark
 from app.models.user import User
 from app.models.profile import Profile
 from app.schemas.article import ArticleResponse, ArticleListResponse, FilterMetaResponse
-from app.services.recommendation import recommendation_engine
 from app.services.llm_pipeline import llm_pipeline
 from app.auth.deps import get_optional_current_user, get_current_user
 
@@ -41,6 +40,9 @@ def format_article_response(article: Article, user_id: Optional[int] = None, mat
         processing_status=getattr(article, "processing_status", "completed") or "completed",
         processing_error=getattr(article, "processing_error", None),
         summary_word_count=getattr(article, "summary_word_count", 0) or 0,
+        batch_id=getattr(article, "batch_id", None),
+        batch_state=getattr(article, "batch_state", "active") or "active",
+        canonical_url=getattr(article, "canonical_url", None) or article.source_url,
         image_url=article.image_url,
         published_at=article.published_at,
         created_at=article.created_at,
@@ -50,7 +52,7 @@ def format_article_response(article: Article, user_id: Optional[int] = None, mat
 
 @router.get("/trending", response_model=ArticleListResponse)
 def get_trending_articles(
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user)
 ):
@@ -58,12 +60,27 @@ def get_trending_articles(
     Retrieve global trending articles ordered by viral/geopolitical impact.
     Note: Trending feed does NOT show personal match percentage.
     """
-    query = db.query(Article).order_by(
+    query = db.query(Article).filter(
+        and_(
+            or_(Article.batch_state == "active", Article.batch_state.is_(None)),
+            Article.processing_status == "completed"
+        )
+    ).order_by(
         desc(Article.trending),
         desc(Article.trending_score),
         desc(Article.published_at)
     )
     articles = query.limit(limit).all()
+    if not articles:
+        # Resilient fallback: ensure news is displayed even during initial batch migrations or rotation transitions
+        articles = db.query(Article).filter(
+            Article.processing_status == "completed"
+        ).order_by(
+            desc(Article.trending),
+            desc(Article.trending_score),
+            desc(Article.published_at)
+        ).limit(limit).all()
+
     user_id = current_user.id if current_user else None
 
     items = [format_article_response(a, user_id=user_id, match_score=None, db=db) for a in articles]
@@ -71,37 +88,15 @@ def get_trending_articles(
 
 @router.get("/foryou", response_model=ArticleListResponse)
 def get_for_you_articles(
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     """
-    Personalized 'For You' feed using interest graph weights from the 15-question quiz.
-    CRITICAL: Only shows match percentage if user is authenticated AND has completed the onboarding quiz.
+    Standard global news feed endpoint (formerly personalized feed).
+    Returns standard trending news without personal weighting.
     """
-    profile = None
-    user_id = None
-    has_completed_quiz = False
-
-    if current_user:
-        user_id = current_user.id
-        profile = db.query(Profile).filter(Profile.user_id == current_user.id).first()
-        if profile and profile.completed_onboarding:
-            has_completed_quiz = True
-
-    all_articles = db.query(Article).all()
-    ranked = recommendation_engine.rank_for_you(all_articles, profile, limit=limit)
-
-    items = [
-        format_article_response(
-            art,
-            user_id=user_id,
-            match_score=score if has_completed_quiz else None,
-            db=db
-        )
-        for art, score in ranked
-    ]
-    return ArticleListResponse(total=len(items), items=items)
+    return get_trending_articles(limit=limit, db=db, current_user=current_user)
 
 @router.get("", response_model=ArticleListResponse)
 def filter_articles(
@@ -120,7 +115,12 @@ def filter_articles(
     Only computes personal match_score if user is logged in AND completed the onboarding quiz.
     """
     from sqlalchemy import cast, String
-    query = db.query(Article)
+    query = db.query(Article).filter(
+        and_(
+            or_(Article.batch_state == "active", Article.batch_state.is_(None)),
+            Article.processing_status == "completed"
+        )
+    )
 
     if region and region.strip() and region.strip().lower() != "all":
         reg = region.strip().lower()
@@ -166,31 +166,21 @@ def filter_articles(
 
     total = query.count()
     articles = query.order_by(desc(Article.published_at)).offset(offset).limit(limit).all()
+    user_id = current_user.id if current_user else None
 
-    profile = None
-    has_completed_quiz = False
-    user_id = None
-    if current_user:
-        user_id = current_user.id
-        profile = db.query(Profile).filter(Profile.user_id == current_user.id).first()
-        if profile and profile.completed_onboarding:
-            has_completed_quiz = True
-
-    items = []
-    for a in articles:
-        match_score = None
-        if has_completed_quiz and profile:
-            match_score = recommendation_engine.score_article(a, profile)
-        items.append(format_article_response(a, user_id=user_id, match_score=match_score, db=db))
-
+    items = [
+        format_article_response(a, user_id=user_id, match_score=None, db=db)
+        for a in articles
+    ]
     return ArticleListResponse(total=total, items=items)
 
 @router.get("/meta/filters", response_model=FilterMetaResponse)
 def get_filter_metadata(db: Session = Depends(get_db)):
     """Return available distinct regions, languages, and fields present in the database."""
-    regions = sorted(list(set(r[0].strip() for r in db.query(Article.region).distinct().all() if r[0] and r[0].strip())))
-    languages = sorted(list(set(l[0].strip() for l in db.query(Article.original_language).distinct().all() if l[0] and l[0].strip())))
-    fields = sorted(list(set(f[0].strip() for f in db.query(Article.field).distinct().all() if f[0] and f[0].strip())))
+    active_filter = or_(Article.batch_state == "active", Article.batch_state.is_(None))
+    regions = sorted(list(set(r[0].strip() for r in db.query(Article.region).filter(active_filter).distinct().all() if r[0] and r[0].strip())))
+    languages = sorted(list(set(l[0].strip() for l in db.query(Article.original_language).filter(active_filter).distinct().all() if l[0] and l[0].strip())))
+    fields = sorted(list(set(f[0].strip() for f in db.query(Article.field).filter(active_filter).distinct().all() if f[0] and f[0].strip())))
 
     if not regions:
         regions = ["Gujarat", "India", "Kerala", "Maharashtra", "Tamil Nadu", "Telangana/Andhra Pradesh"]

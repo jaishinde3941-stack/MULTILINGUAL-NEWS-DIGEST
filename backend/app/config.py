@@ -7,6 +7,10 @@ import json
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./news_digest.db"
     
+    # Server Host and Port Configuration
+    HOST: str = "127.0.0.1"
+    PORT: int = 8000
+    
     # Local Ollama LLM Configuration
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"

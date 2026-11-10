@@ -2,8 +2,11 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+import concurrent.futures
 import logging
+
+from app.services.dedup import normalize_canonical_url, compute_article_fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -166,8 +169,13 @@ class NewsScraper:
                     except Exception:
                         pass
 
+                canonical_url = normalize_canonical_url(link)
+                fingerprint = compute_article_fingerprint(title, name, canonical_url)
+
                 articles.append({
                     "source_url": link,
+                    "canonical_url": canonical_url,
+                    "fingerprint": fingerprint,
                     "source_name": name,
                     "title": title,
                     "content": final_content,
@@ -182,29 +190,46 @@ class NewsScraper:
 
         return articles
 
-    def scrape_all(self, max_per_feed: int = 3) -> List[Dict[str, Any]]:
-        """Scrape articles across all configured international sources."""
+    def scrape_all(self, max_per_feed: int = 4, max_workers: int = 8) -> List[Dict[str, Any]]:
+        """
+        Scrape articles across all configured international sources in parallel
+        for fast RSS extraction.
+        """
         feeds = get_configured_feeds()
         all_articles = []
-        for feed in feeds:
-            feed_articles = self.fetch_feed(feed, max_items=max_per_feed)
-            all_articles.extend(feed_articles)
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_feed = {executor.submit(self.fetch_feed, feed, max_items=max_per_feed): feed for feed in feeds}
+            for future in concurrent.futures.as_completed(future_to_feed):
+                try:
+                    feed_articles = future.result()
+                    if feed_articles:
+                        all_articles.extend(feed_articles)
+                except Exception as ex:
+                    feed_name = future_to_feed[future].get("name", "Unknown")
+                    logger.warning(f"Parallel fetch failed for feed {feed_name}: {ex}")
         
         # If all live feeds failed (e.g. offline/network blocked), fallback to sample seed items
         if len(all_articles) == 0:
             logger.info("All live RSS feeds timed out or returned empty. Using fallback sample dispatches.")
             from app.services.seed_data import SAMPLE_ARTICLES
             for s in SAMPLE_ARTICLES:
+                c_url = normalize_canonical_url(s["source_url"])
+                fg = compute_article_fingerprint(s["original_title"], s["source_name"], c_url)
                 all_articles.append({
                     "source_url": s["source_url"],
+                    "canonical_url": c_url,
+                    "fingerprint": fg,
                     "source_name": s["source_name"],
                     "title": s["original_title"],
                     "content": s["original_content"],
                     "image_url": s.get("image_url"),
-                    "published_at": s.get("published_at", datetime.utcnow()),
+                    "published_at": s.get("published_at", datetime.now(timezone.utc)),
                     "expected_language": s["original_language"],
                     "expected_region": s["region"],
                 })
+
+        return all_articles
 
         return all_articles
 

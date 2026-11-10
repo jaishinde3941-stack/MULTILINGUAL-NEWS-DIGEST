@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
@@ -20,6 +21,8 @@ async def lifespan(app: FastAPI):
     try:
         with engine.connect() as conn:
             from sqlalchemy import text
+            conn.execute(text("PRAGMA journal_mode=WAL"))
+            conn.execute(text("PRAGMA busy_timeout=30000"))
             res = conn.execute(text("PRAGMA table_info(articles)"))
             cols = [r[1] for r in res.fetchall()]
             if "original_summary" not in cols:
@@ -34,11 +37,37 @@ async def lifespan(app: FastAPI):
             if "summary_word_count" not in cols:
                 conn.execute(text("ALTER TABLE articles ADD COLUMN summary_word_count INTEGER DEFAULT 0"))
                 logger.info("Added summary_word_count column to articles table.")
+            if "canonical_url" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN canonical_url VARCHAR(1000)"))
+                logger.info("Added canonical_url column to articles table.")
+            if "article_fingerprint" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN article_fingerprint VARCHAR(64)"))
+                logger.info("Added article_fingerprint column to articles table.")
+            if "batch_id" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN batch_id VARCHAR(50)"))
+                logger.info("Added batch_id column to articles table.")
+            if "batch_state" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN batch_state VARCHAR(20) DEFAULT 'active'"))
+                logger.info("Added batch_state column to articles table.")
+            if "displayed_at" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN displayed_at DATETIME"))
+                logger.info("Added displayed_at column to articles table.")
+            if "consumed_at" not in cols:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN consumed_at DATETIME"))
+                logger.info("Added consumed_at column to articles table.")
             conn.commit()
     except Exception as e:
         logger.warning(f"Column migration notice: {e}")
 
     logger.info("Database tables initialized. Ready for news ingestion.")
+
+    # Automatic startup news ingestion & prefetching in non-blocking background daemon
+    try:
+        from app.services.ingestion_manager import ingestion_manager
+        import threading
+        threading.Thread(target=ingestion_manager.on_startup, daemon=True, name="startup-prefetch-worker").start()
+    except Exception as e:
+        logger.warning(f"Startup prefetch worker could not be spawned: {e}")
     
     yield
     # Shutdown logic if any
@@ -60,11 +89,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    origin = request.headers.get("origin")
+    allowed_origin = origin if origin else "*"
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An internal server error occurred.",
+            "error": str(exc),
+            "status": "error"
+        },
+        headers={
+            "Access-Control-Allow-Origin": allowed_origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
 # Register Routers
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(articles_router)
 app.include_router(ingest_router)
+
+@app.get("/health")
+def liveness_probe():
+    return {
+        "status": "ok",
+        "service": "Multilingual News Digest API",
+        "port": settings.PORT
+    }
 
 @app.get("/")
 def health_check():
@@ -82,4 +139,4 @@ def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=True)

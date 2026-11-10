@@ -6,9 +6,10 @@ import logging
 
 from app.database import get_db, SessionLocal
 from app.models.article import Article
-from app.schemas.article import IngestResult
+from app.schemas.article import IngestResult, BatchStatusResponse, BatchRotateResponse, ArticleResponse
 from app.services.scraper import scraper, CURATED_RSS_FEEDS
 from app.services.llm_pipeline import llm_pipeline
+from app.services.ingestion_manager import ingestion_manager
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,59 @@ def trigger_ingest(
             skipped_count=skipped,
             errors=errors
         )
+
+@router.post("/rotate", response_model=BatchRotateResponse)
+def rotate_batch():
+    """
+    Fast batch rotation:
+    Instantly activates the 50 ready reserve articles, retires previous batch,
+    and triggers background refill for replacement reserve articles.
+    """
+    res = ingestion_manager.rotate_batch()
+    raw_items = res.get("items") or res.get("articles") or []
+    formatted_items = [
+        item if isinstance(item, ArticleResponse) else ArticleResponse.model_validate(item)
+        for item in raw_items
+    ]
+    return BatchRotateResponse(
+        status=res["status"],
+        message=res["message"],
+        batch_id=res.get("batch_id"),
+        active_batch_id=res.get("active_batch_id") or res.get("batch_id"),
+        rotated_count=res.get("rotated_count", len(formatted_items)),
+        count=res.get("count", len(formatted_items)),
+        active_count=res.get("active_count", 0),
+        reserve_count=res.get("reserve_count", 0),
+        reserve_remaining=res.get("reserve_remaining", res.get("reserve_count", 0)),
+        ready_count=res.get("ready_count", 0),
+        items=formatted_items,
+        articles=formatted_items,
+        is_refilling=res.get("is_refilling", False)
+    )
+
+@router.get("/batch-status", response_model=BatchStatusResponse)
+def get_batch_status():
+    """
+    Check real-time capacity and readiness of active and reserve batches,
+    as well as live background refill worker progress.
+    """
+    st = ingestion_manager.get_status()
+    return BatchStatusResponse(
+        active_count=st["active_count"],
+        reserve_count=st["reserve_count"],
+        consumed_count=st["consumed_count"],
+        target_batch_size=st["target_batch_size"],
+        active_batch_id=st.get("active_batch_id"),
+        is_refilling=st["is_refilling"],
+        refill_progress=st["refill_progress"],
+        can_rotate=st["can_rotate"],
+        message=st["refill_progress"].get("message")
+    )
+
+@router.post("/refill")
+def trigger_refill():
+    """Trigger background refill worker to prepare reserve articles."""
+    return ingestion_manager.trigger_refill()
 
 @router.post("/reprocess")
 def trigger_reprocess(

@@ -25,6 +25,44 @@ export interface Article {
   created_at: string;
   match_score?: number;
   is_bookmarked?: boolean;
+  canonical_url?: string;
+  batch_id?: string;
+  batch_state?: "active" | "reserve" | "consumed";
+}
+
+export interface BatchStatusResponse {
+  active_count: number;
+  reserve_count: number;
+  consumed_count: number;
+  history_count: number;
+  target_batch_size?: number;
+  active_batch_id?: string;
+  is_refilling: boolean;
+  can_rotate?: boolean;
+  refill_progress: {
+    target: number;
+    ready?: number;
+    current?: number;
+    status: string;
+    message?: string;
+  };
+  message?: string;
+}
+
+export interface BatchRotateResponse {
+  status: "rotated" | "refill_in_progress" | "empty" | "success";
+  message: string;
+  batch_id?: string;
+  active_batch_id?: string;
+  count: number;
+  rotated_count?: number;
+  items?: Article[];
+  articles: Article[];
+  reserve_remaining: number;
+  active_count?: number;
+  reserve_count?: number;
+  ready_count?: number;
+  is_refilling: boolean;
 }
 
 export interface ArticleListResponse {
@@ -38,37 +76,14 @@ export interface FilterMetadata {
   fields: string[];
 }
 
-export interface QuizOption {
-  id: string;
-  label: string;
-  description?: string;
-  icon?: string;
-  weight_map: Record<string, number>;
-}
-
-export interface QuizQuestion {
-  id: number;
-  dimension: "region" | "field" | "language";
-  title: string;
-  subtitle: string;
-  is_multi_select: boolean;
-  options: QuizOption[];
-}
-
-export interface QuizListResponse {
-  total_questions: number;
-  questions: QuizQuestion[];
-}
-
 export interface UserProfile {
   id: number;
   user_id: number;
-  completed_onboarding: boolean;
-  interest_weights: Record<string, number>;
-  preferred_languages: string[];
-  preferred_regions: string[];
-  preferred_fields: string[];
-  quiz_answers: Record<string, string[]>;
+  email?: string;
+  full_name?: string;
+  preferred_languages?: string[];
+  preferred_regions?: string[];
+  preferred_fields?: string[];
   updated_at?: string;
 }
 
@@ -76,7 +91,7 @@ export interface AuthUser {
   id: number;
   email: string;
   full_name?: string;
-  completed_onboarding: boolean;
+  completed_onboarding?: boolean;
 }
 
 export interface AuthResponse {
@@ -85,7 +100,7 @@ export interface AuthResponse {
   user_id: number;
   email: string;
   full_name?: string;
-  completed_onboarding: boolean;
+  completed_onboarding?: boolean;
 }
 
 // Token management in localStorage
@@ -109,6 +124,8 @@ export const removeStoredToken = (): void => {
 const getAuthHeaders = (): Record<string, string> => {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
   };
   const token = getStoredToken();
   if (token) {
@@ -118,21 +135,12 @@ const getAuthHeaders = (): Record<string, string> => {
 };
 
 // API Functions
-export async function fetchTrendingArticles(limit: number = 20): Promise<ArticleListResponse> {
+export async function fetchTrendingArticles(limit: number = 50): Promise<ArticleListResponse> {
   const res = await fetch(`${API_BASE_URL}/api/articles/trending?limit=${limit}`, {
     headers: getAuthHeaders(),
     cache: "no-store",
   });
   if (!res.ok) throw new Error("Failed to fetch trending articles");
-  return res.json();
-}
-
-export async function fetchForYouArticles(limit: number = 20): Promise<ArticleListResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/articles/foryou?limit=${limit}`, {
-    headers: getAuthHeaders(),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("Failed to fetch For You articles");
   return res.json();
 }
 
@@ -204,24 +212,6 @@ export async function toggleBookmark(id: number): Promise<{ bookmarked: boolean;
   return res.json();
 }
 
-export async function fetchOnboardingQuestions(): Promise<QuizListResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/onboarding/questions`, {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("Failed to fetch onboarding questions");
-  return res.json();
-}
-
-export async function submitOnboarding(answers: { question_id: number; selected_option_ids: string[] }[]): Promise<UserProfile> {
-  const res = await fetch(`${API_BASE_URL}/api/onboarding/submit`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ answers }),
-  });
-  if (!res.ok) throw new Error("Failed to submit onboarding answers");
-  return res.json();
-}
-
 export async function fetchUserProfile(): Promise<UserProfile> {
   const res = await fetch(`${API_BASE_URL}/api/users/profile`, {
     headers: getAuthHeaders(),
@@ -281,5 +271,69 @@ export async function triggerIngestion(maxPerFeed: number = 2): Promise<{ messag
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error("Failed to trigger ingestion");
+  return res.json();
+}
+
+export async function rotateNewsBatch(): Promise<BatchRotateResponse> {
+  const targetUrl = `${API_BASE_URL}/api/ingest/rotate`;
+  try {
+    const res = await fetch(targetUrl, {
+      method: "POST",
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null);
+      const detail = errBody?.detail || errBody?.message || `HTTP ${res.status}`;
+      throw new Error(`Batch rotation failed: ${detail}`);
+    }
+    return res.json();
+  } catch (err: unknown) {
+    // If direct cross-origin request hit a network or CORS drop, fallback to same-origin Next.js proxy
+    if (typeof window !== "undefined" && API_BASE_URL && API_BASE_URL.startsWith("http")) {
+      try {
+        const proxyRes = await fetch("/api/ingest/rotate", {
+          method: "POST",
+          headers: getAuthHeaders(),
+        });
+        if (proxyRes.ok) {
+          return proxyRes.json();
+        }
+      } catch {
+        // Fallback also failed, bubble up original error
+      }
+    }
+    throw err;
+  }
+}
+
+export async function fetchBatchStatus(): Promise<BatchStatusResponse> {
+  const targetUrl = `${API_BASE_URL}/api/ingest/batch-status`;
+  try {
+    const res = await fetch(targetUrl, {
+      headers: getAuthHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to fetch batch status");
+    return res.json();
+  } catch (err: unknown) {
+    if (typeof window !== "undefined" && API_BASE_URL && API_BASE_URL.startsWith("http")) {
+      try {
+        const proxyRes = await fetch("/api/ingest/batch-status", {
+          headers: getAuthHeaders(),
+          cache: "no-store",
+        });
+        if (proxyRes.ok) return proxyRes.json();
+      } catch {}
+    }
+    throw err;
+  }
+}
+
+export async function triggerBatchRefill(): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/ingest/refill`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to trigger batch refill");
   return res.json();
 }
