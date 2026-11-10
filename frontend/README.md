@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# अख़बार वाले — Frontend Application
 
-## Getting Started
+> Modern editorial digital newspaper frontend for **अख़बार वाले**, built with **Next.js 16 (Turbopack)**, **React 19**, and **Tailwind CSS v4**.
 
-First, run the development server:
+---
+
+## 🎨 Design & Editorial Typography System
+
+The frontend implements a broadsheet typography and design-token system:
+
+- **Typography Stack**:
+  - **Inter**: Primary UI font for navigation (14px), buttons (14px), filter labels (12px), news card headlines (19–20px bold), and executive summaries (14–15px).
+  - **Newsreader Serif**: Broadsheet serif font for hero headings (44–48px) and article detail modal headlines (36–40px).
+  - **Noto Sans Devanagari**: Weight 800 for the Hindi brand title **अख़बार वाले**.
+- **Colour & Theme Tokens**:
+  - **Light Theme**: Warm off-white background (`#F7F7F5`), crisp white cards (`#FFFFFF`), secondary panel surfaces (`#F1F1EF`), high-contrast text (`#191919`), muted metadata (`#707070`), and editorial red accents (`#D92D35`).
+  - **Dark Theme**: Charcoal background (`#111318`), elevated dark surface (`#191C23`), secondary surface (`#20242D`), soft white text (`#F5F5F5`), muted grey (`#A1A1AA`), and night red accents (`#F05252`).
+  - Automatic system detection with manual toggle and `localStorage` persistence (`akhbar_theme`).
+
+---
+
+## ⚡ Fluidity & Zero-CLS Architecture
+
+- **`scrollbar-gutter: stable`**: Prevents horizontal layout jumping when modals open or close on Windows.
+- **Fixed Top Progress Line**: Indeterminate progress shimmer fixed beneath the 68px header eliminates layout shifts during background refilling or filtering.
+- **GPU-Accelerated Card Transitions**: Hardware-accelerated hover elevation (`transform-gpu will-change-transform`) with Apple-style spring easing (`cubic-bezier(0.16, 1, 0.3, 1)`).
+- **Smooth Image Fade-In**: Smooth opacity transition upon image load prevents harsh popping.
+- **Custom Floating Pill Scrollbar**: Rounded floating scrollbar with transparent borders.
+
+---
+
+## 📁 Key Components
+
+| Component | Description |
+| :--- | :--- |
+| **`components/Header.tsx`** | 68px sticky navigation bar with Hindi branding, active tabs (`Trending`, `Explore`, `Search`), live batch rotation counter `(50/50)`, theme toggle, and auth controls. |
+| **`components/HeroStats.tsx`** | Understated broadsheet hero with dynamic uppercase dateline, Newsreader heading, and live article counter. |
+| **`components/FilterBar.tsx`** | Compact 2-row panel with search input, live count, and 3 equal-width filter dropdowns (`REGION`, `ORIGINAL LANGUAGE`, `CATEGORY`) with custom SVG chevrons. |
+| **`components/ArticleCard.tsx`** | 16:9 news card with GPU-accelerated elevation, source/language badges, category kicker, line-clamped typography, and quick controls. |
+| **`components/ArticleReaderModal.tsx`** | 850px reading modal with Web Speech TTS, dynamic expandable original headline, central executive summary (Inter 17px, line-height 1.75), word count, source footer, and context tags. |
+| **`components/AuthModal.tsx`** | Sign-in and registration dialog with JWT authentication. |
+| **`components/ProfileDrawer.tsx`** | Reader profile slide-over drawer with preferences. |
+
+---
+
+## 🚀 Development & Build
 
 ```bash
+# Install dependencies
+npm install
+
+# Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Run automated component & multilingual tests
+node test_modal.mjs
+node test_interactive_modal.mjs
+
+# Build production bundle with Turbopack
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📜 License
+MIT License.
